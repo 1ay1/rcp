@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RCP — the Retrieval Context Protocol</title>
+<meta name="description" content="RCP is an open, versioned JSON-RPC protocol that standardises how clients obtain retrieval context from any RAG engine — any language, any vendor. The retrieval companion to MCP and ACP." />
+<meta property="og:title" content="RCP — the Retrieval Context Protocol" />
+<meta property="og:description" content="One protocol so any RAG engine can share its power. The retrieval companion to MCP and ACP." />
+<meta property="og:type" content="website" />
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<header class="hero">
+  <nav>
+    <span class="brand">RCP</span>
+    <div class="links">
+      <a href="#why">Why</a>
+      <a href="#how">How it works</a>
+      <a href="#methods">Methods</a>
+      <a href="#quickstart">SDKs</a>
+      <a href="spec/rcp-1.0.html">Spec</a>
+      <a href="https://github.com/1ay1/rcp">GitHub</a>
+    </div>
+  </nav>
+  <div class="hero-inner">
+    <div class="badge">RCP/1 · stable · JSON-RPC 2.0</div>
+    <h1>The Retrieval Context Protocol</h1>
+    <p class="tagline">
+      One open protocol so <b>any</b> RAG engine — any language, any vendor —
+      can share its power, and any client can consume it uniformly.
+    </p>
+    <p class="sub">
+      RCP is to <b>retrieval</b> what <a href="https://modelcontextprotocol.io">MCP</a>
+      is to <b>tools</b> and <a href="https://agentclientprotocol.com">ACP</a> is to
+      <b>agents</b>. Embed, rerank, retrieve, and graph-search across engines with
+      capability negotiation and graceful degradation.
+    </p>
+    <div class="cta">
+      <a class="btn primary" href="spec/rcp-1.0.html">Read the spec →</a>
+      <a class="btn" href="#quickstart">Quickstart</a>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<section id="why" class="band">
+  <h2>Why RCP</h2>
+  <div class="grid3">
+    <div class="card">
+      <h3>Uniform access</h3>
+      <p>One client speaks to a local embedded index, a hosted vector DB, a Python
+      research engine, and a knowledge graph — without bespoke glue for each.</p>
+    </div>
+    <div class="card">
+      <h3>Capability negotiation</h3>
+      <p>Clients discover what a server can do at connect time and never call an
+      unsupported method. Presence implies support; absence is graceful.</p>
+    </div>
+    <div class="card">
+      <h3>Language &amp; transport free</h3>
+      <p>JSON-RPC 2.0 over newline-delimited stdio or HTTP. If it can read a line
+      and parse JSON, it can be an RCP server. Official SDKs in C++ &amp; Python;
+      the wire is trivial to implement anywhere.</p>
+    </div>
+    <div class="card">
+      <h3>Composable</h3>
+      <p>Servers chain, fuse, and re-export. A gateway can be a server to its
+      clients and a client to upstream engines, fusing their hits.</p>
+    </div>
+    <div class="card">
+      <h3>Forward compatible</h3>
+      <p>A client built for RCP/1 interoperates with any RCP/1+ server using the
+      intersection of their capabilities. Additive changes never break.</p>
+    </div>
+    <div class="card">
+      <h3>Tiny to implement</h3>
+      <p>A conforming server needs one handshake method plus one retrieval
+      capability. The reference server fits on a screen.</p>
+    </div>
+  </div>
+</section>
+
+<section id="how" class="band alt">
+  <h2>How it works</h2>
+  <div class="how">
+    <div class="how-text">
+      <ol>
+        <li><b>Connect</b> a transport — spawn the server as a subprocess (stdio)
+        or point at an HTTP endpoint.</li>
+        <li><b>Initialize</b> — the client sends its version; the server replies
+        with the negotiated version and its <em>capabilities</em>.</li>
+        <li><b>Call</b> only the advertised methods: <code>embed</code>,
+        <code>rerank</code>, <code>retrieve</code>, <code>graph</code>,
+        <code>index/*</code>.</li>
+        <li><b>Shutdown</b> — or just close the pipe.</li>
+      </ol>
+    </div>
+    <pre class="wire"><span class="c">// handshake</span>
+--&gt; {"jsonrpc":"2.0","id":1,"method":"initialize",
+     "params":{"protocolVersion":1,"client":{"name":"app"}}}
+&lt;-- {"jsonrpc":"2.0","id":1,"result":{
+     "protocolVersion":1,
+     "server":{"name":"my-engine","version":"2.3"},
+     "capabilities":{"embed":{"dimension":384},
+                     "retrieve":{"maxK":100}}}}
+
+<span class="c">// retrieve</span>
+--&gt; {"jsonrpc":"2.0","id":2,"method":"retrieve",
+     "params":{"query":"eiffel tower","k":3}}
+&lt;-- {"jsonrpc":"2.0","id":2,"result":{"hits":[
+     {"id":"d1","score":0.91,"text":"…Paris…"}]}}</pre>
+  </div>
+</section>
+
+<section id="methods" class="band">
+  <h2>The method set</h2>
+  <table class="methods">
+    <thead><tr><th>Method</th><th>Capability</th><th>Params → Result</th></tr></thead>
+    <tbody>
+      <tr><td><code>initialize</code></td><td>always</td><td>version + caps handshake</td></tr>
+      <tr><td><code>info</code></td><td>always</td><td>identity + caps, no state change</td></tr>
+      <tr><td><code>embed</code></td><td><code>embed</code></td><td><code>{texts}</code> → <code>{vectors}</code></td></tr>
+      <tr><td><code>embed/sparse</code></td><td><code>sparseEmbed</code></td><td><code>{texts}</code> → learned-sparse terms (SPLADE)</td></tr>
+      <tr><td><code>embed/multi</code></td><td><code>multiVector</code></td><td><code>{texts}</code> → per-token vectors (ColBERT)</td></tr>
+      <tr><td><code>rerank</code></td><td><code>rerank</code></td><td><code>{query,passages}</code> → <code>{scores}</code></td></tr>
+      <tr><td><code>retrieve</code></td><td><code>retrieve</code></td><td><code>{query,k,mode?,filter?,rerank?,mmr?}</code> → <code>{hits}</code></td></tr>
+      <tr><td><code>query/transform</code></td><td><code>transform</code></td><td><code>{query,op}</code> → expansions / HyDE / decomposition</td></tr>
+      <tr><td><code>graph</code></td><td><code>graph</code></td><td><code>{op,…}</code> → GraphRAG local / global / drift</td></tr>
+      <tr><td><code>index/add</code></td><td><code>index</code></td><td><code>{documents}</code> → <code>{ids}</code></td></tr>
+      <tr><td><code>index/delete</code></td><td><code>index</code></td><td><code>{ids}</code> → <code>{deleted}</code></td></tr>
+      <tr><td><code>catalog/list</code></td><td><code>catalog</code></td><td>enumerate federated engines (§7.13)</td></tr>
+      <tr><td><code>shutdown</code></td><td>always</td><td><code>{}</code> → <code>{}</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="quickstart" class="band alt">
+  <h2>Quickstart</h2>
+  <p class="center">RCP ships one <b>type-theoretic C++ SDK</b> — invariants proved at
+  compile time (strong scalars, refinement types, a typestate client, a
+  concept-gated server, <code>Result&lt;T&gt; = std::expected</code>, no exceptions for
+  control flow) — plus <b>Python bindings</b> layered over it. Cross-language
+  interop is proven: a Python client talks to a C++ server and back.</p>
+  <div class="grid2">
+    <div>
+      <h3>Server (Python)</h3>
+      <pre class="code">import rcp
+
+s = rcp.Server()
+s.set_info("my-engine", "1.0")
+s.advertise(rcp.Capability.Retrieve,
+            {"maxK": 100, "modes": ["hybrid"]})
+
+@s.on(rcp.Method.RETRIEVE)
+def _(params):
+    hits = my_index.search(
+        params["query"], params.get("k", 10))
+    return {"hits": [
+        {"id": h.id, "score": h.score,
+         "text": h.text} for h in hits]}
+
+s.serve_stdio()</pre>
+    </div>
+    <div>
+      <h3>Client (Python)</h3>
+      <pre class="code">import rcp
+
+c = rcp.connect_stdio(
+        ["python3", "my_engine.py"])
+print(c.server, c.capabilities)
+
+if c.supports(rcp.Capability.Retrieve):
+    for h in c.retrieve("eiffel tower", k=3):
+        print(h["id"], h["score"])</pre>
+    </div>
+  </div>
+  <div class="grid2">
+    <div>
+      <h3>Server (C++)</h3>
+      <pre class="code">#include "rcp.hpp"
+using namespace rcp;
+
+struct Engine {
+  PeerInfo info() const { return {"my-engine","1.0"}; }
+  Capabilities capabilities() const {
+    return Capabilities{}.with_retrieve({{"maxK",100}});
+  }
+  Result&lt;Json&gt; retrieve(const Json&amp; p) {
+    return Json{{"hits", search(p["query"], p["k"])}};
+  }
+};
+
+int main() { Server{Engine{}}.serve_stdio(); }</pre>
+    </div>
+    <div>
+      <h3>Client (C++)</h3>
+      <pre class="code">#include "rcp.hpp"
+using namespace rcp;
+
+auto c = Client::connect_stdio({"./my_engine"});
+if (!c) return 1;                 // handshake failed
+
+if (auto k = TopK::make(3)) {     // 0 is unrepresentable
+  auto hits = c-&gt;retrieve("eiffel tower", *k);
+  if (hits) for (auto&amp; h : *hits)
+    std::printf("%s %.3f\n", h.id.c_str(),
+                h.score.get());
+}</pre>
+    </div>
+  </div>
+  <p class="note">Prefer another language? RCP is just JSON-RPC over a pipe — the
+  <a href="https://github.com/1ay1/rcp/tree/main/schema">JSON Schema</a> is the
+  normative contract, and the <a href="https://github.com/1ay1/rcp/tree/main/conformance">conformance
+  suite</a> validates any server in any language.</p>
+</section>
+
+<section id="backends" class="band">
+  <h2>Many engines, two models</h2>
+  <p class="center">Have more than one RAG backend? RCP layers both routing models on
+  the core <code>retrieve</code> + capability handshake — <b>zero new server
+  obligations</b>. Both are in the SDK, and both can be driven from a single
+  <code>rcp.json</code> registry.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3>Selector — pick one</h3>
+      <p>Choose a single backend by id, by required capability, or by priority
+      with liveness fallback (primary → secondary). Connections are lazy: listing
+      five candidates opens zero subprocesses until you select one.</p>
+      <pre class="code">sel = rcp.Selector.load("rcp.json")
+c = sel.select_primary()      # highest-priority live
+c.retrieve("query", k=5)</pre>
+    </div>
+    <div class="card">
+      <h3>Federation — query all</h3>
+      <p>Fan a query out to <em>every</em> engine that supports it, concurrently,
+      then fuse the ranked lists with Reciprocal Rank Fusion — the interoperable
+      default that needs only ranks. Each hit is tagged with its origin engine.</p>
+      <pre class="code">Federation fed;
+fed.add("docs", std::move(*docs))
+   .add("web",  std::move(*web));
+auto hits = fed.retrieve("query", *TopK::make(10));</pre>
+    </div>
+  </div>
+</section>
+
+<section id="stack" class="band">
+  <h2>The agent stack</h2>
+  <p class="center">RCP is designed to sit beside MCP and ACP. An agent runtime speaks
+  <b>ACP</b> to its client, calls tools via <b>MCP</b>, and fetches grounding
+  context via <b>RCP</b> — all sharing JSON-RPC framing and the same
+  <code>initialize</code>/capabilities handshake.</p>
+  <div class="stack">
+    <div class="layer acp"><b>ACP</b><span>agent ⇄ client</span></div>
+    <div class="layer mcp"><b>MCP</b><span>agent ⇄ tools</span></div>
+    <div class="layer rcp"><b>RCP</b><span>agent ⇄ retrieval</span></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>RCP — Retrieval Context Protocol · RCP/1 · MIT licensed</span>
+    <div class="links">
+      <a href="spec/rcp-1.0.html">Specification</a>
+      <a href="https://github.com/1ay1/rcp">GitHub</a>
+      <a href="https://github.com/1ay1/rcp/tree/main/schema">Schema</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

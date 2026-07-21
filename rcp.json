@@ -1,0 +1,21 @@
+{
+  "$schema": "https://1ay1.github.io/rcp/schema/rcp-1.0.json",
+  "engines": [
+    {
+      "id": "docs",
+      "transport": "stdio",
+      "command": ["python3", "examples/example_server.py"],
+      "priority": 10,
+      "weight": 1.0,
+      "required": false
+    },
+    {
+      "id": "web",
+      "transport": "http",
+      "url": "http://127.0.0.1:8000/rcp",
+      "priority": 5,
+      "weight": 1.5,
+      "required": false
+    }
+  ]
+}

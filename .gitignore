@@ -1,0 +1,24 @@
+# Build artifacts
+sdk/cpp/example_server
+sdk/cpp/example_client
+sdk/cpp/example_selector
+sdk/cpp/example_federation
+sdk/cpp/test_types
+sdk/cpp/*.o
+sdk/cpp/*.dSYM/
+
+# Python
+sdk/python/.venv/
+sdk/python/build/
+sdk/python/*.egg-info/
+sdk/python/rcp/*.so
+**/__pycache__/
+*.pyc
+*.so
+*.o
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,194 @@
+<div align="center">
+
+# RCP — the Retrieval Context Protocol
+
+**One open protocol so any RAG engine — any language, any vendor — can share its power, and any client can consume it uniformly.**
+
+The retrieval companion to [MCP](https://modelcontextprotocol.io) (tools) and [ACP](https://agentclientprotocol.com) (agents).
+
+[**Specification**](spec/rcp-1.0.md) · [**JSON Schema**](schema/rcp-1.0.json) · [**Website**](https://1ay1.github.io/rcp/) · [**C++ SDK**](sdk/cpp) · [**Python SDK**](sdk/python)
+
+`RCP/1` · JSON-RPC 2.0 · MIT
+
+</div>
+
+---
+
+## Why
+
+Every RAG stack reinvents the same wire: embed, rerank, retrieve, filter, cite.
+Swapping a vector DB, adding a reranker, or wiring a second knowledge base means
+rewriting glue. MCP standardised *tools*; ACP standardised *agents*; **nothing
+standardised the retrieval layer that grounds them.** RCP is that layer — a
+small, versioned, JSON-RPC contract a *powerful* engine can fully express and a
+thin client can fully consume.
+
+- **Capability-negotiated.** A server advertises exactly what it can do
+  (`embed`, `sparseEmbed`, `multiVector`, `rerank`, `retrieve`, `transform`,
+  `graph`, `index`, `catalog`). Clients gate calls on capabilities — no probing,
+  no surprises.
+- **SOTA-complete.** Hybrid (dense + learned-sparse) search, ColBERT
+  late-interaction, SPLADE, multi-stage rerank cascades, MMR diversification,
+  contextual retrieval, GraphRAG (local/global/drift), agentic multi-hop,
+  citations, streaming, and metadata filtering are all first-class. See
+  [Appendix B](spec/rcp-1.0.md#appendix-b--mapping-sota-retrieval-to-rcp).
+- **Transport-free.** JSON-RPC 2.0 over newline-delimited stdio *or* HTTP. If it
+  can read a line and parse JSON, it can speak RCP.
+- **Composable.** A registry (`rcp.json`) or a `catalog`-capable aggregator lets
+  a client target one backend (**Selector**) or fuse many (**Federation**).
+
+## Architecture
+
+An agent runtime speaks **ACP** to its client, calls tools over **MCP**, and
+fetches grounding context over **RCP**. All three share JSON-RPC framing, an
+`initialize`/capabilities handshake, `_meta` extensibility, and cursor
+pagination — learn one, you know the shape of all three.
+
+```
+  client  ⇄  ACP  ⇄  agent  ⇄  MCP  ⇄  tools
+                       │
+                       └──────  RCP  ⇄  retrieval engine(s)
+```
+
+## SDKs
+
+RCP ships **one type-theoretic C++ SDK** with **Python bindings** layered over
+it (pybind11). Cross-language interop is proven by the test suite: a Python
+client drives a C++ server and vice versa.
+
+The C++ SDK pushes protocol invariants into the type system, proved at **compile
+time**:
+
+- **Strong scalars & refinement types** — `TopK` cannot be `0`, `ProtocolVersion`
+  is validated at construction, `Score`/`Dimension` are not interchangeable.
+- **Typestate `Client`** — only constructible via a `connect*()` that runs the
+  handshake; capability-gated calls fail *client-side* with `CapabilityMissing`
+  before any I/O.
+- **Concept-gated `Server<H>`** — a handler advertises capabilities and
+  implements matching hooks; `if constexpr` dispatch means an advertised-but-
+  unimplemented method is a typed error, never a crash.
+- **`Result<T> = std::expected<T, Error>`** everywhere — no exceptions for
+  control flow. `test_types.cpp` carries `static_assert` proofs; **the build is
+  the test runner.**
+
+### Python
+
+```python
+import rcp
+
+# ── server ──────────────────────────────────────────────
+s = rcp.Server()
+s.set_info("my-engine", "1.0")
+s.advertise(rcp.Capability.Retrieve, {"maxK": 100, "modes": ["hybrid"]})
+
+@s.on(rcp.Method.RETRIEVE)
+def _(params):
+    hits = my_index.search(params["query"], params.get("k", 10))
+    return {"hits": [{"id": h.id, "score": h.score, "text": h.text} for h in hits]}
+
+s.serve_stdio()
+
+# ── client ──────────────────────────────────────────────
+c = rcp.connect_stdio(["python3", "my_engine.py"])
+if c.supports(rcp.Capability.Retrieve):
+    for h in c.retrieve("eiffel tower", k=3):
+        print(h["id"], h["score"])
+```
+
+### C++
+
+```cpp
+#include "rcp.hpp"
+using namespace rcp;
+
+struct Engine {
+  PeerInfo info() const { return {"my-engine", "1.0"}; }
+  Capabilities capabilities() const {
+    return Capabilities{}.with_retrieve({{"maxK", 100}});
+  }
+  Result<Json> retrieve(const Json& p) {
+    return Json{{"hits", search(p["query"], p["k"])}};
+  }
+};
+
+int main() { Server{Engine{}}.serve_stdio(); }
+```
+
+## Many engines, two models
+
+Both routing models layer on the core `retrieve` + capability handshake — **zero
+new server obligations** — and both can be driven from a single `rcp.json`
+registry ([§16.1](spec/rcp-1.0.md#161-discovery)).
+
+| Model | Use it when | API |
+|-------|-------------|-----|
+| **Selector** | you have several backends and want to pick **one** — by id, by required capability, or by priority with liveness fallback (lazy connect) | `rcp.Selector.load("rcp.json").select_primary()` |
+| **Federation** | you want to query **all** reachable engines concurrently and fuse the ranked lists with Reciprocal Rank Fusion (origin-tagged hits) | `Federation::from_registry_file("rcp.json")` |
+
+```json
+{ "engines": [
+    { "id": "docs", "transport": "stdio", "command": ["python3", "docs_server.py"], "priority": 10 },
+    { "id": "web",  "transport": "http",  "url": "http://127.0.0.1:8000/rcp", "weight": 1.5 } ] }
+```
+
+## Methods
+
+| Method | Capability | Purpose |
+|--------|-----------|---------|
+| `initialize` / `info` | always | version + capability handshake / stateless identity |
+| `embed` | `embed` | dense embeddings |
+| `embed/sparse` | `sparseEmbed` | learned-sparse terms (SPLADE) |
+| `embed/multi` | `multiVector` | per-token vectors (ColBERT) |
+| `rerank` | `rerank` | cross-encoder / late-interaction scoring |
+| `retrieve` | `retrieve` | the workhorse — mode, filter, rerank, MMR, recency, citations |
+| `query/transform` | `transform` | expansion / HyDE / decomposition |
+| `graph` | `graph` | GraphRAG local / global / drift |
+| `index/add`, `index/delete` | `index` | mutate the corpus |
+| `catalog/list` | `catalog` | enumerate federated engines |
+| `shutdown` | always | graceful close |
+
+Full details, error codes, streaming, pagination, and conformance rules are in
+the [**specification**](spec/rcp-1.0.md).
+
+## Build & test
+
+**C++** (needs a C++23 compiler with `std::expected` — GCC 13+ / recent Clang):
+
+```sh
+cd sdk/cpp
+make test        # static_assert proofs + runtime checks
+make examples    # example_server / client / selector / federation
+```
+
+**Python bindings:**
+
+```sh
+cd sdk/python
+python -m venv .venv && . .venv/bin/activate
+pip install pybind11 setuptools
+python setup.py build_ext --inplace
+python test_bindings.py
+```
+
+**Conformance** — validate any server, in any language:
+
+```sh
+python3 conformance/check.py -- python3 examples/example_server.py
+python3 conformance/check.py -- ./sdk/cpp/example_server
+```
+
+## Repository layout
+
+- `spec/rcp-1.0.md` — the normative specification (RFC-2119, JSON-RPC 2.0).
+- `schema/rcp-1.0.json` — JSON Schema (draft 2020-12) for every message shape.
+- `sdk/cpp/` — the type-theoretic C++ SDK (header-only) + examples + tests.
+- `sdk/python/` — pybind11 bindings and the `rcp` package.
+- `conformance/` — transport-agnostic conformance suite.
+- `examples/` — runnable Python client/server.
+- `site/` — the GitHub Pages homepage (`build_spec.py` renders the spec to HTML).
+- `rcp.json` — sample engine registry.
+
+## License
+
+MIT © 2025 Ayush Bhat. Contributions welcome — RCP is meant to be a community
+standard, not a single vendor's API.
