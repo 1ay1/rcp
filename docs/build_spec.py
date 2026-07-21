@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Render spec/rcp-1.0.md -> site/spec/rcp-1.0.html with a table of contents.
+"""Render spec/rcp-1.0.md -> docs/spec/rcp-1.0.html with a table of contents.
 
 Zero dependencies (stdlib only). Handles the Markdown subset the spec uses:
 ATX headings, fenced code blocks, pipe tables, ordered/unordered lists,
 blockquotes, and inline code / bold / italics / links. Run from the repo root:
 
-    python3 site/build_spec.py
+    python3 docs/build_spec.py
 """
 import html
 import os
@@ -14,7 +14,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "spec", "rcp-1.0.md")
-OUT = os.path.join(ROOT, "site", "spec", "rcp-1.0.html")
+OUT = os.path.join(ROOT, "docs", "spec", "rcp-1.0.html")
 
 _INLINE_CODE = re.compile(r"`([^`]+)`")
 _BOLD = re.compile(r"\*\*([^*]+)\*\*")
