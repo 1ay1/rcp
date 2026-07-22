@@ -3,7 +3,7 @@ CXX     ?= g++
 CXXFLAGS?= -std=c++23 -O2 -Wall -Wextra -Iinclude
 
 .PHONY: all test clean
-all: test_types example_server example_client
+all: test_types example_server example_client example_selector example_federation
 
 test_types: tests/test_types.cpp $(wildcard include/rcp/*.hpp) include/rcp.hpp
 	$(CXX) $(CXXFLAGS) $< -o $@
@@ -14,9 +14,15 @@ example_server: examples/example_server.cpp $(wildcard include/rcp/*.hpp)
 example_client: examples/example_client.cpp $(wildcard include/rcp/*.hpp)
 	$(CXX) $(CXXFLAGS) $< -o $@
 
+example_selector: examples/example_selector.cpp $(wildcard include/rcp/*.hpp)
+	$(CXX) $(CXXFLAGS) $< -o $@
+
+example_federation: examples/example_federation.cpp $(wildcard include/rcp/*.hpp)
+	$(CXX) $(CXXFLAGS) $< -o $@
+
 test: test_types example_server example_client
 	./test_types
 	./example_client ./example_server
 
 clean:
-	rm -f test_types example_server example_client
+	rm -f test_types example_server example_client example_selector example_federation

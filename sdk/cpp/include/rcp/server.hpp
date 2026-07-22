@@ -18,6 +18,8 @@
 #include "rcp/protocol.hpp"
 #include "rcp/types.hpp"
 
+#include <csignal>
+#include <cerrno>
 #include <cstring>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -34,6 +36,18 @@ namespace rcp {
     Json p = Json{{"level", level}, {"message", message}};
     if (!data.is_null()) p["data"] = std::move(data);
     return Json{{"jsonrpc", "2.0"}, {"method", method::Log}, {"params", std::move(p)}}.dump();
+}
+
+// Build a `notifications/progress` frame (spec §9) for a server to emit during a
+// long `retrieve`. `token` echoes the request's `_meta.progressToken`; `progress`
+// is 0.0–1.0; `stage` and `partial` (e.g. { hits:[…] }) are optional.
+[[nodiscard]] inline std::string make_progress_notification(const Json& token, double progress,
+                                                            std::string_view stage = {},
+                                                            Json partial = Json(nullptr)) {
+    Json p = Json{{"progressToken", token}, {"progress", progress}};
+    if (!stage.empty())      p["stage"]   = stage;
+    if (!partial.is_null())  p["partial"] = std::move(partial);
+    return Json{{"jsonrpc", "2.0"}, {"method", method::Progress}, {"params", std::move(p)}}.dump();
 }
 
 // ── Handler concept ──────────────────────────────────────────────────────────
@@ -55,6 +69,7 @@ template <class H> concept HasTransform    = requires(H& h, const Json& p) { { h
 template <class H> concept HasGraph        = requires(H& h, const Json& p) { { h.graph(p) }        -> std::same_as<Result<Json>>; };
 template <class H> concept HasIndexAdd     = requires(H& h, const Json& p) { { h.index_add(p) }    -> std::same_as<Result<Json>>; };
 template <class H> concept HasIndexDelete  = requires(H& h, const Json& p) { { h.index_delete(p) } -> std::same_as<Result<Json>>; };
+template <class H> concept HasCatalog      = requires(H& h, const Json& p) { { h.catalog(p) }      -> std::same_as<Result<Json>>; };
 
 template <class H>
 concept Handler = HandlerBase<H>;
@@ -99,15 +114,37 @@ public:
     }
 
     [[nodiscard]] std::string handle_line(const std::string& line) {
-        try {
-            Json reply = handle(Json::parse(line));
-            if (reply.is_null()) return std::string{};   // notification: no response
-            return reply.dump();
-        }
+        Json msg;
+        try { msg = Json::parse(line); }
         catch (const std::exception& e) { return err(Json(nullptr), errc::ParseError, e.what()).dump(); }
+
+        // JSON-RPC batch (spec §11): one response per *request*; notifications
+        // contribute nothing; an all-notification batch yields no output.
+        if (msg.is_array()) {
+            if (msg.empty()) return err(Json(nullptr), errc::InvalidRequest, "empty batch").dump();
+            Json out = Json::array();
+            for (const auto& el : msg) {
+                Json reply = handle(el);
+                if (!reply.is_null()) out.push_back(std::move(reply));
+            }
+            return out.empty() ? std::string{} : out.dump();
+        }
+
+        Json reply = handle(msg);
+        if (reply.is_null()) return std::string{};   // notification: no response
+        return reply.dump();
+    }
+
+    // Loop over partial writes; returns false on error (e.g. EPIPE) so callers
+    // can stop rather than spin.
+    static bool write_all(int fd, std::string_view s) {
+        const char* p = s.data(); std::size_t n = s.size();
+        while (n) { ssize_t w = ::write(fd, p, n); if (w < 0) { if (errno == EINTR) continue; return false; } p += w; n -= (std::size_t)w; }
+        return true;
     }
 
     void serve_stdio() {
+        std::signal(SIGPIPE, SIG_IGN);
         std::string in;
         char tmp[4096];
         for (;;) {
@@ -120,16 +157,19 @@ public:
             }
             std::string line = in.substr(0, nl); in.erase(0, nl + 1);
             if (line.empty()) continue;
+            bool is_shutdown = false;
+            try { Json m = Json::parse(line); is_shutdown = m.is_object() && m.value("method", std::string{}) == method::Shutdown; } catch (...) {}
             std::string reply = handle_line(line);
             if (!reply.empty()) {
                 reply.push_back('\n');
-                (void)!::write(1, reply.data(), reply.size());
+                if (!write_all(1, reply)) break;   // stdout closed: peer gone
             }
-            try { if (Json::parse(line).value("method", std::string{}) == method::Shutdown) break; } catch (...) {}
+            if (is_shutdown) break;
         }
     }
 
     [[nodiscard]] Result<void> serve_http(std::uint16_t port) {
+        std::signal(SIGPIPE, SIG_IGN);
         int fd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (fd < 0) return fail<void>(errc::BackendUnavailable, "socket() failed");
         int yes = 1; ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
@@ -154,10 +194,15 @@ public:
             }
             std::string body = hend != std::string::npos ? req.substr(hend + 4) : std::string{};
             std::string reply = handle_line(body.empty() ? "{}" : body);
-            if (reply.empty()) reply = "{}";   // notification: acknowledge with empty 200 body
-            std::string resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
-                               std::to_string(reply.size()) + "\r\nConnection: close\r\n\r\n" + reply;
-            (void)!::write(c, resp.data(), resp.size());
+            std::string resp;
+            if (reply.empty()) {
+                // Notification / all-notification batch: no JSON-RPC response body.
+                resp = "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n";
+            } else {
+                resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                       std::to_string(reply.size()) + "\r\nConnection: close\r\n\r\n" + reply;
+            }
+            (void)write_all(c, resp);
             ::close(c);
         }
     }
@@ -212,6 +257,10 @@ private:
         if (m == method::IndexDelete) {
             if constexpr (HasIndexDelete<H>) return run(Capability::Index,       [&]{ return handler_.index_delete(params); });
             else                             return err(id, errc::CapabilityMissing, "index not implemented");
+        }
+        if (m == method::Catalog) {
+            if constexpr (HasCatalog<H>)     return run(Capability::Catalog,     [&]{ return handler_.catalog(params); });
+            else                             return err(id, errc::CapabilityMissing, "catalog not implemented");
         }
         return err(id, errc::UnknownMethod, "unknown method '" + m + "'");
     }

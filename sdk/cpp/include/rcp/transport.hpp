@@ -13,6 +13,8 @@
 #include "rcp/types.hpp"
 
 #include <csignal>
+#include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -22,6 +24,13 @@
 #include <unistd.h>
 
 namespace rcp {
+
+// Ignore SIGPIPE process-wide (installed once): writing to a pipe or socket
+// whose peer has exited must fail the write with EPIPE and surface as a typed
+// error — never terminate our process with a signal.
+inline void ignore_sigpipe() {
+    [[maybe_unused]] static const bool once = [] { std::signal(SIGPIPE, SIG_IGN); return true; }();
+}
 
 struct Transport {
     virtual ~Transport() = default;
@@ -35,6 +44,7 @@ class StdioTransport final : public Transport {
 public:
     [[nodiscard]] static Result<std::unique_ptr<StdioTransport>>
     spawn(const std::vector<std::string>& argv) {
+        ignore_sigpipe();
         if (argv.empty()) return fail<std::unique_ptr<StdioTransport>>(errc::InvalidParams, "empty argv");
         int in_pipe[2], out_pipe[2];
         if (::pipe(in_pipe) != 0 || ::pipe(out_pipe) != 0)
@@ -69,8 +79,11 @@ public:
             Json reply;
             try { reply = Json::parse(*ln); }
             catch (const std::exception& e) { return fail<Json>(errc::ParseError, e.what()); }
-            // Skip progress notifications for the synchronous client.
-            if (reply.value("method", std::string{}) == "notifications/progress") continue;
+            // Skip any server-initiated notification (progress, log, or a future
+            // notifications/* frame): a response has no "method". And ignore a
+            // stray reply whose id does not match this request (spec §4.7).
+            if (reply.contains("method")) continue;
+            if (request.contains("id") && reply.contains("id") && reply["id"] != request["id"]) continue;
             return reply;
         }
     }
@@ -107,6 +120,7 @@ private:
 class HttpTransport final : public Transport {
 public:
     explicit HttpTransport(std::string base_url) : base_(std::move(base_url)) {
+        ignore_sigpipe();
         if (!base_.empty() && base_.back() == '/') base_.pop_back();
     }
     [[nodiscard]] Result<Json> call(const Json& request) override {
@@ -132,12 +146,25 @@ public:
         std::string req = "POST " + path + " HTTP/1.1\r\nHost: " + host +
                           "\r\nContent-Type: application/json\r\nContent-Length: " +
                           std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-        (void)!::write(fd, req.data(), req.size());
+        // Robust write: loop over partial writes; EPIPE surfaces as a typed error.
+        { const char* p = req.data(); size_t n = req.size();
+          while (n) { ssize_t w = ::write(fd, p, n);
+              if (w < 0) { if (errno == EINTR) continue; ::close(fd); return fail<Json>(errc::BackendUnavailable, "write failed"); }
+              p += w; n -= (size_t)w; } }
         std::string resp; char tmp[4096]; ssize_t r;
         while ((r = ::read(fd, tmp, sizeof tmp)) > 0) resp.append(tmp, (size_t)r);
         ::close(fd);
+        // Parse the HTTP status line; non-2xx is a transport failure (spec §5.2).
+        int status = 0;
+        if (resp.compare(0, 5, "HTTP/") == 0) {
+            if (auto sp = resp.find(' '); sp != std::string::npos) status = std::atoi(resp.c_str() + sp + 1);
+        }
         auto sep = resp.find("\r\n\r\n");
         std::string b = sep != std::string::npos ? resp.substr(sep + 4) : resp;
+        if (status == 429) return fail<Json>(errc::RateLimited, "HTTP 429");
+        if (status == 503) return fail<Json>(errc::BackendUnavailable, "HTTP 503");
+        if (status && (status < 200 || status >= 300) && b.find_first_not_of(" \r\n\t") == std::string::npos)
+            return fail<Json>(errc::BackendUnavailable, "HTTP " + std::to_string(status));
         try { return Json::parse(b); }
         catch (const std::exception& e) { return fail<Json>(errc::ParseError, e.what()); }
     }

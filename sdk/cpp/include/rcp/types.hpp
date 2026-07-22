@@ -51,10 +51,36 @@ inline constexpr int RateLimited        = -32011;
 struct Error {
     int         code = errc::InternalError;
     std::string message;
+    Json        data;   // OPTIONAL structured payload (spec §12):
+                        // { field?, option?, retryable?, retryAfterMs?, detail? }
 
-    [[nodiscard]] Json to_json() const { return Json{{"code", code}, {"message", message}}; }
+    Error() = default;
+    Error(int c, std::string m, Json d = Json(nullptr))
+        : code(c), message(std::move(m)), data(std::move(d)) {}
+
+    [[nodiscard]] Json to_json() const {
+        Json j{{"code", code}, {"message", message}};
+        if (!data.is_null()) j["data"] = data;
+        return j;
+    }
     static Error from_json(const Json& j) {
-        return Error{j.value("code", errc::InternalError), j.value("message", std::string{"error"})};
+        Error e{j.value("code", errc::InternalError), j.value("message", std::string{"error"})};
+        if (j.contains("data")) e.data = j["data"];
+        return e;
+    }
+
+    // Retryability (spec §12): RateLimited / BackendUnavailable are transient by
+    // default; an explicit `data.retryable` overrides the code-based default.
+    [[nodiscard]] bool retryable() const {
+        if (data.is_object() && data.contains("retryable") && data["retryable"].is_boolean())
+            return data["retryable"].template get<bool>();
+        return code == errc::RateLimited || code == errc::BackendUnavailable;
+    }
+    // Server-suggested backoff in milliseconds (`data.retryAfterMs`), or -1.
+    [[nodiscard]] long retry_after_ms() const {
+        if (data.is_object() && data.contains("retryAfterMs") && data["retryAfterMs"].is_number_integer())
+            return data["retryAfterMs"].template get<long>();
+        return -1;
     }
 };
 

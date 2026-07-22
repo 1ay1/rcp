@@ -53,8 +53,14 @@ struct ExampleEngine {
     }
 
     Result<Json> embed(const Json& p) {
+        // Accept `inputs` (preferred) or the legacy `texts`; each element is a
+        // bare string or a Content block (spec §4.8 / §7.3).
+        const Json& in = p.contains("inputs") ? p["inputs"] : p.value("texts", Json::array());
         Json vecs = Json::array();
-        for (auto& t : p.value("texts", Json::array())) vecs.push_back(embed_one(t.get<std::string>()));
+        for (auto& t : in) {
+            std::string s = t.is_string() ? t.get<std::string>() : t.value("text", std::string{});
+            vecs.push_back(embed_one(s));
+        }
         return Json{{"vectors", std::move(vecs)}};
     }
 
@@ -71,7 +77,10 @@ struct ExampleEngine {
             hits.push_back(Json{{"id", DOCS[i].first}, {"score", s}, {"text", DOCS[i].second},
                                 {"citation", {{"source", DOCS[i].first}}}});
         }
-        return Json{{"hits", std::move(hits)}, {"usage", {{"mode", p.value("mode", std::string{"hybrid"})}}}};
+        return Json{{"hits", std::move(hits)},
+                    {"usage", {{"mode", p.value("mode", std::string{"hybrid"})},
+                               {"candidates", DOCS.size()},
+                               {"reranked", 0}}}};
     }
 
     Result<Json> graph(const Json& p) {
