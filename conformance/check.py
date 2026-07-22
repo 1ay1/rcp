@@ -67,6 +67,11 @@ def run(t):
     r = t.raw({"jsonrpc": "2.0", "id": 0, "method": Method.INFO, "params": {}})
     check("info answers before initialize", r.get("result", {}).get("server") is not None)
 
+    # ping before initialize MUST work and MUST echo the nonce
+    r = t.raw({"jsonrpc": "2.0", "id": 100, "method": Method.PING, "params": {"nonce": 777}})
+    check("ping answers before initialize and echoes nonce",
+          r.get("result", {}).get("nonce") == 777, str(r))
+
     # method before initialize MUST be NotInitialized
     r = t.raw({"jsonrpc": "2.0", "id": 1, "method": Method.RETRIEVE, "params": {"query": "x", "k": 1}})
     check("pre-initialize call rejected with -32001",

@@ -70,6 +70,14 @@ public:
             return ok(id, info_result(neg));
         }
         if (m == method::Info)     return ok(id, info_result(kProtocolVersion));
+        if (m == method::Ping)     return ok(id, params.contains("nonce")
+                                              ? Json{{"nonce", params["nonce"]}} : Json::object());
+        if (m == method::Cancel) {
+            // Cancellation is a notification: best-effort, never answered. The
+            // dispatcher is synchronous here, so the target request has already
+            // completed; treat as a no-op and emit no reply.
+            return Json(nullptr);
+        }
         if (m == method::Shutdown) return ok(id, Json::object());
 
         if (!initialized_) return err(id, errc::NotInitialized, "call 'initialize' first");
@@ -80,7 +88,11 @@ public:
     }
 
     [[nodiscard]] std::string handle_line(const std::string& line) {
-        try { return handle(Json::parse(line)).dump(); }
+        try {
+            Json reply = handle(Json::parse(line));
+            if (reply.is_null()) return std::string{};   // notification: no response
+            return reply.dump();
+        }
         catch (const std::exception& e) { return err(Json(nullptr), errc::ParseError, e.what()).dump(); }
     }
 
@@ -98,8 +110,10 @@ public:
             std::string line = in.substr(0, nl); in.erase(0, nl + 1);
             if (line.empty()) continue;
             std::string reply = handle_line(line);
-            reply.push_back('\n');
-            (void)!::write(1, reply.data(), reply.size());
+            if (!reply.empty()) {
+                reply.push_back('\n');
+                (void)!::write(1, reply.data(), reply.size());
+            }
             try { if (Json::parse(line).value("method", std::string{}) == method::Shutdown) break; } catch (...) {}
         }
     }
@@ -129,6 +143,7 @@ public:
             }
             std::string body = hend != std::string::npos ? req.substr(hend + 4) : std::string{};
             std::string reply = handle_line(body.empty() ? "{}" : body);
+            if (reply.empty()) reply = "{}";   // notification: acknowledge with empty 200 body
             std::string resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                                std::to_string(reply.size()) + "\r\nConnection: close\r\n\r\n" + reply;
             (void)!::write(c, resp.data(), resp.size());

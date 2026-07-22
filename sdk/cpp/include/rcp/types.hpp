@@ -43,6 +43,7 @@ inline constexpr int VersionMismatch    = -32002;
 inline constexpr int CapabilityMissing  = -32003;
 inline constexpr int UnknownMethod      = -32004;
 inline constexpr int OptionUnsupported  = -32005;
+inline constexpr int Cancelled          = -32006;
 inline constexpr int BackendUnavailable = -32010;
 inline constexpr int RateLimited        = -32011;
 } // namespace errc

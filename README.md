@@ -145,6 +145,8 @@ registry ([§16.1](spec/rcp-1.0.md#161-discovery)).
 | `graph` | `graph` | GraphRAG local / global / drift |
 | `index/add`, `index/delete` | `index` | mutate the corpus |
 | `catalog/list` | `catalog` | enumerate federated engines |
+| `notifications/cancel` | always | abandon an in-flight request |
+| `ping` | always | liveness / round-trip; echoes a nonce |
 | `shutdown` | always | graceful close |
 
 Full details, error codes, streaming, pagination, and conformance rules are in

@@ -54,6 +54,11 @@ def test_client_against_cpp_server():
     assert len(hits) == 2 and hits[0]["id"], hits
     print(f"client<->C++: ok, top hit = {hits[0]['id']}")
 
+    # ping echoes the nonce (ungated, works any time)
+    pong = c.ping(123)
+    assert pong.get("nonce") == 123, pong
+    print("ping: ok")
+
     # capability gating raises client-side for an unadvertised method
     try:
         c.rerank("q", ["a", "b"])

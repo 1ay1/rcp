@@ -4,10 +4,43 @@
 **Status:** Stable
 **Date:** 2025
 **Editors:** RCP Working Group
+**This document:** <https://1ay1.github.io/rcp/spec/rcp-1.0.html>
+**Latest version:** <https://1ay1.github.io/rcp/spec/>
+**Normative schema:** [`/schema/rcp-1.0.json`](../schema/rcp-1.0.json)
 
 > The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**,
 > **SHOULD**, **SHOULD NOT**, **RECOMMENDED**, **MAY**, and **OPTIONAL** in this
-> document are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+> document are to be interpreted as described in
+> [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) and
+> [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174) when, and only when, they
+> appear in all capitals, as shown here.
+
+---
+
+## Table of Contents
+
+- [Abstract](#abstract)
+- [1. Goals & Non-Goals](#1-goals--non-goals)
+- [2. Roles](#2-roles)
+- [3. The retrieval pipeline model](#3-the-retrieval-pipeline-model)
+- [4. Message Format](#4-message-format) — requests, `_meta`, notifications, [data types](#46-data-types), [identifiers, concurrency & limits](#47-identifiers-concurrency--limits)
+- [5. Transports](#5-transports) — [stdio](#51-stdio-recommended-default), [HTTP](#52-http), [compatibility envelope](#53-compatibility-envelope)
+- [6. Capabilities](#6-capabilities) — [`retrieve` metadata](#61-retrieve-capability-metadata), [extension & registration policy](#62-extension--registration-policy)
+- [7. Methods](#7-methods) — initialize, info, embed(×3), rerank, retrieve, transform, graph, index(×2), shutdown, catalog/list, cancel, ping
+- [8. Metadata filtering](#8-metadata-filtering)
+- [9. Streaming & progress](#9-streaming--progress)
+- [10. Pagination](#10-pagination)
+- [11. Batching](#11-batching)
+- [12. Errors](#12-errors)
+- [13. Session Lifecycle](#13-session-lifecycle)
+- [14. Conformance](#14-conformance)
+- [15. Security Considerations](#15-security-considerations)
+- [16. Federation](#16-federation--querying-every-reachable-engine)
+- [Appendix A — Versioning Policy](#appendix-a--versioning-policy)
+- [Appendix B — Mapping SOTA techniques to RCP](#appendix-b--mapping-sota-retrieval-to-rcp)
+- [Appendix C — Relationship to MCP and ACP](#appendix-c--relationship-to-mcp-and-acp)
+- [Appendix D — A worked session](#appendix-d--a-worked-session)
+- [Appendix E — Change log](#appendix-e--change-log)
 
 ---
 
@@ -154,9 +187,54 @@ prefix. This keeps the core namespace clean and forward-compatible.
 ### 4.5 Notifications
 
 A message with no `id` is a notification and **MUST NOT** be answered. RCP/1
-defines `notifications/progress` (§9), emitted by a server during a long request
-only if the client attached a `progressToken` and the server advertised
-`streaming`.
+defines `notifications/progress` (§9) and `notifications/cancel` (§7.14).
+
+### 4.6 Data types
+
+RCP messages use only standard JSON types; the following conventions are
+normative:
+
+- **Integers** (`k`, `dimension`, `topN`, vocabulary `indices`, byte offsets)
+  are JSON numbers with no fractional part and **MUST** fit in a signed 53-bit
+  range (IEEE-754 double-exact). Implementations **MUST NOT** emit them as
+  strings.
+- **Floats** (`score`, embedding components, `lambda`, `progress`) are JSON
+  numbers. Special values (`NaN`, `Infinity`) are **NOT** valid JSON and **MUST
+  NOT** be emitted; a server that would produce them **MUST** substitute a
+  finite sentinel or omit the field.
+- **Strings** are UTF-8. Servers **MUST** accept the full Unicode range in
+  `query`/`text` and **MUST NOT** assume ASCII.
+- **Booleans** are `true`/`false`, never `0`/`1` or `"true"`.
+- **Absent vs. `null`.** An **absent** optional field means "unspecified; use the
+  default." An explicit **`null`** is only meaningful where a schema lists
+  `null` as a permitted type; elsewhere a peer **MUST** treat `null` as absent.
+  Producers **SHOULD** omit optional fields rather than send `null`.
+- **Enums** are lower-case strings exactly as written in this document
+  (`"cross-encoder"`, `"hybrid"`); comparison is case-sensitive.
+- **Unknown fields** in any object **MUST** be ignored by the receiver, never
+  rejected (forward compatibility). This does not apply to `filter` *field
+  names*, which are validated against the advertised set (§8).
+
+### 4.7 Identifiers, concurrency & limits
+
+**Request `id`.** The `id` **MUST** be unique among a client's in-flight requests
+on a connection. A client **MAY** reuse an `id` value only after it has received
+the response bearing that `id`. Servers **MUST** echo the request `id`
+unchanged (same JSON type and value) in the response. `id` **MUST NOT** be
+`null` on a request (a `null` id denotes a response to an unparseable request,
+per JSON-RPC).
+
+**Concurrency & ordering.** A client **MAY** have multiple requests in flight on
+one connection (pipelining). A server **MAY** answer them in any order; clients
+**MUST** correlate responses by `id`, not by arrival order. A server **MAY**
+process requests concurrently. `initialize` is the exception: a client **MUST
+NOT** send any other request until it has received the `initialize` response.
+
+**Message size & limits.** RCP sets no hard message-size limit, but servers
+**SHOULD** advertise and enforce operational bounds — `retrieve.maxK`,
+`rerank.maxCandidates`, `embed.batchLimit` — and reject requests that exceed them
+with `-32602` (`InvalidParams`), or shed load with `-32011` (`RateLimited`).
+Clients **SHOULD** treat these advertised bounds as authoritative and pre-clamp.
 
 ---
 
@@ -176,12 +254,49 @@ A message is byte-identical across transports; only framing differs.
 ### 5.2 HTTP
 
 - Each request is `POST <base>/<method>` (default base `/rcp`) with the JSON-RPC
-  object as the body and `Content-Type: application/json`.
-- The response body is the JSON-RPC response with HTTP `200` for any well-formed
-  JSON-RPC response (including JSON-RPC-level errors).
-- Server-Sent Events (`Accept: text/event-stream`) **MAY** be used to deliver
-  `notifications/progress` frames followed by the final response, when the
-  server advertises `streaming`.
+  object as the body and `Content-Type: application/json`. The method in the URL
+  path **MUST** match the `method` in the body; on mismatch the server **MUST**
+  return `-32600`.
+- The response body is the JSON-RPC response with `Content-Type:
+  application/json`.
+- **HTTP status mapping.** The transport status is distinct from the JSON-RPC
+  error. A well-formed JSON-RPC response — *including* one carrying a JSON-RPC
+  `error` — **MUST** be returned with HTTP `200`. Non-`200` codes are reserved
+  for transport-level failures the JSON-RPC layer never saw:
+
+  | HTTP | When |
+  |------|------|
+  | `200` | Any well-formed JSON-RPC response (success **or** JSON-RPC error). |
+  | `400` | Body is not valid JSON / not a JSON-RPC request (equivalent to `-32700`/`-32600` when a body cannot be produced). |
+  | `401` / `403` | Deployment auth rejected the caller (RCP defines no auth; see below). |
+  | `404` | Unknown base path (not an RCP endpoint). |
+  | `429` | Transport-level rate limiting; **SHOULD** carry `Retry-After`. Mirrors `-32011`. |
+  | `500` / `503` | Server/back-end failure that prevented producing a JSON-RPC response. Mirrors `-32603`/`-32010`. |
+
+  Clients **SHOULD** prefer the JSON-RPC `error.code` when a `200` body is
+  present and treat non-`200` codes as transport faults.
+- **Streaming (SSE).** When the client sends `Accept: text/event-stream` and the
+  server advertised `streaming`, the server **MAY** respond with
+  `Content-Type: text/event-stream` and emit zero or more
+  `notifications/progress` frames followed by exactly one final frame carrying
+  the JSON-RPC response. Each frame is one SSE `data:` line whose payload is a
+  compact JSON object, terminated by a blank line. The stream ends after the
+  final response frame. If the client did not request SSE, the server **MUST**
+  return a single buffered JSON response.
+- **Sessions.** HTTP is request-scoped, so `initialize` state does not persist
+  across connections by default. A stateless HTTP server **MAY** treat every
+  request as implicitly initialized at its advertised capabilities and answer
+  `initialize`/`info` idempotently; such a server **MUST** still reject
+  capability-gated methods it does not advertise with `-32003`. A stateful HTTP
+  server **MAY** issue a session token in `initialize.result._meta.session` and
+  require it (e.g. header `RCP-Session`) on subsequent requests.
+- **Authentication.** RCP carries no auth of its own. HTTP deployments **MAY**
+  require standard mechanisms (`Authorization: Bearer …`, mTLS, API-key
+  headers); these are opaque to the protocol and handled by the transport layer
+  before dispatch. Servers **MUST** apply auth before `initialize`.
+- **CORS.** A browser-facing server **SHOULD** set appropriate
+  `Access-Control-Allow-*` headers and handle `OPTIONS` preflight; the RCP
+  payload is unaffected.
 
 ### 5.3 Compatibility envelope
 
@@ -233,6 +348,30 @@ be `{}`). Absence means unavailable; clients **MUST NOT** use it.
 
 Servers **MAY** add extension capability keys prefixed `x-<vendor>`; clients
 **MUST** ignore unrecognised keys.
+
+### 6.2 Extension & registration policy
+
+RCP is designed to grow additively without breaking the wire. Names are
+partitioned into three spaces:
+
+- **Core** — the method names, capability keys, enum values, and error codes
+  defined in this document. These are reserved; only a future RCP revision may
+  add to core (Appendix A).
+- **Vendor extensions** — any implementer **MAY** introduce experimental or
+  proprietary surface *without* central coordination by using the `x-<vendor>`
+  convention: extension **methods** are named `x-<vendor>/<name>` (e.g.
+  `x-acme/rerank-v2`), extension **capability keys** and **object fields** are
+  named `x-<vendor>` or `x-<vendor>-<name>`. A peer **MUST** ignore any
+  `x-`-prefixed name it does not understand. Extension methods are still gated:
+  a client **MUST NOT** call `x-acme/*` unless the server advertised a matching
+  `x-acme` capability.
+- **`_meta`** — free-form side-band data (timings, trace ids, `progressToken`,
+  session tokens) attached to any params or result object, never affecting core
+  semantics. Keys are implementation-defined; unknown keys are ignored.
+
+A name that proves broadly useful **SHOULD** be proposed for core registration in
+a subsequent revision, at which point it drops its `x-` prefix. There is no
+run-time registry service; capability negotiation *is* the discovery mechanism.
 
 ---
 
@@ -425,6 +564,39 @@ optional `endpoint` a client may connect to directly. An aggregator that only
 proxies (never exposes downstream endpoints) omits `endpoint`; clients then
 query through the aggregator's own `retrieve`, which fuses internally.
 
+### 7.14 `notifications/cancel` — client notification
+
+A client **MAY** ask a server to abandon an in-flight request (a long
+`retrieve`, `rerank`, or `graph` call). Cancellation is a **notification** (no
+`id`, no response):
+
+```json
+{ "jsonrpc": "2.0", "method": "notifications/cancel",
+  "params": { "id": 7, "reason"?: "user aborted" } }
+```
+
+- `params.id` is the `id` of the request to cancel.
+- On receipt the server **SHOULD** stop work for that request as soon as
+  practical. It then **MUST** still send exactly one response for the cancelled
+  request: either the normal result (if it had already completed or completion
+  is cheaper than aborting) or an error with code `-32006` (`Cancelled`).
+- Cancelling an unknown or already-answered `id` is a no-op the server **MUST**
+  ignore. Because of the inherent race, a client **MUST** tolerate receiving a
+  full successful result after it sent a cancel.
+- Cancellation is always available; it needs no capability. It is a
+  best-effort hint, not a guarantee of immediate termination.
+
+### 7.15 `ping` — REQUIRED
+
+Liveness / round-trip check. Callable any time (including before `initialize`),
+never changes state.
+
+**Params** `{ "nonce"?: string | number }` · **Result** `{ "nonce"?: same }`
+
+The server **MUST** echo any `nonce` it received. Clients use `ping` for
+keep-alive on long-lived connections and to measure round-trip latency; a
+Selector (§16) uses it for the liveness probe behind primary→secondary fallback.
+
 ---
 
 ## 8. Metadata filtering
@@ -480,6 +652,10 @@ array params and **SHOULD** be preferred over JSON-RPC batching for throughput.
 
 ## 12. Errors
 
+Every failure is a JSON-RPC error object: `{ "code": int, "message": string,
+"data"?: any }`. Codes in the `-32000..-32099` block are RCP-specific; the rest
+are standard JSON-RPC.
+
 | Code | Symbol | Meaning |
 |------|--------|---------|
 | `-32700` | `ParseError` | Invalid JSON. |
@@ -492,10 +668,43 @@ array params and **SHOULD** be preferred over JSON-RPC batching for throughput.
 | `-32003` | `CapabilityMissing` | Method exists but not advertised. |
 | `-32004` | `UnknownMethod` | Method not defined by RCP. |
 | `-32005` | `OptionUnsupported` | A requested option (mode/method) is not advertised. |
+| `-32006` | `Cancelled` | Request was cancelled via `notifications/cancel` (§7.14). |
 | `-32010` | `BackendUnavailable` | Model offline, index not built, upstream down. |
 | `-32011` | `RateLimited` | Server is shedding load; client should back off. |
 
-Servers **MAY** attach `error.data`.
+The range `-32000..-32099` is reserved for RCP; implementers **MUST NOT** define
+custom codes there. Vendor-specific failures **SHOULD** reuse the closest code
+above and disambiguate in `error.data`.
+
+### 12.1 `error.data`
+
+Servers **MAY** attach a structured `error.data` object. When present it
+**SHOULD** use these conventional fields (all optional):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `field` | string | The offending params path, e.g. `"filter.year"` (for `-32602`). |
+| `option` | string | The unsupported mode/method (for `-32005`). |
+| `retryable` | boolean | Whether an identical retry might succeed. |
+| `retryAfterMs` | integer | Hint to wait before retrying (for `-32011`/`-32010`). |
+| `detail` | string | Human-readable diagnostic (never for control flow). |
+
+### 12.2 Retryability
+
+Clients **SHOULD** apply the following retry policy. Retries **SHOULD** use
+exponential backoff with jitter, honouring `retryAfterMs`/`Retry-After` when
+given.
+
+| Code | Retryable? | Client action |
+|------|-----------|---------------|
+| `-32011` `RateLimited` | yes | Back off and retry the same request. |
+| `-32010` `BackendUnavailable` | yes (transient) | Retry with backoff; after a bound, fail over (Selector) or drop the engine (Federation). |
+| `-32603` `InternalError` | maybe | Retry once; if it recurs, treat as fatal. |
+| `-32001` `NotInitialized` | yes, after fixing | Send `initialize`, then retry. |
+| `-32002` `VersionMismatch` | no | Abort; no common version. |
+| `-32003` / `-32004` / `-32005` | no | Programming/capability error; do not retry. |
+| `-32602` `InvalidParams` | no | Fix the request. |
+| `-32006` `Cancelled` | n/a | Expected after a cancel; do not retry automatically. |
 
 ---
 
@@ -521,13 +730,17 @@ A server **MUST** reject any non-`initialize`/`info` request before a successful
 
 A **minimal RCP/1 server** **MUST**:
 
-1. Answer `initialize` with negotiated `protocolVersion` ≥ 1 and `info` any time.
+1. Answer `initialize` with negotiated `protocolVersion` ≥ 1, and `info` and
+   `ping` at any time (including before `initialize`).
 2. Advertise at least one of `embed`, `rerank`, `retrieve`, `graph`.
-3. Reject pre-`initialize` requests with `-32001`.
+3. Reject pre-`initialize` requests (other than `info`/`ping`) with `-32001`.
 4. Reject un-advertised capability methods with `-32003`, undefined methods with
    `-32004`, and unsupported advertised-method options with `-32005`.
-5. Return well-formed JSON-RPC 2.0 for every request; validate params and return
-   `-32602` on malformed input instead of crashing.
+5. Return well-formed JSON-RPC 2.0 for every request; echo the request `id`
+   unchanged; validate params and return `-32602` on malformed input instead of
+   crashing.
+6. Ignore any notification it does not understand, and treat
+   `notifications/cancel` for an unknown `id` as a no-op.
 
 A **SOTA RCP/1 server** additionally **SHOULD** advertise and implement
 `retrieve` with `modes:["dense","sparse","hybrid"]`, `rerank` with a
@@ -668,3 +881,58 @@ An agent runtime speaks **ACP** to its client, calls tools via **MCP**, and
 fetches grounding context via **RCP**. The three share JSON-RPC framing, the
 `initialize`/capabilities handshake, `_meta` extensibility, and cursor-based
 pagination, so an implementer of one is immediately productive in another.
+
+## Appendix D — A worked session
+
+A complete stdio session against a SOTA server, showing the handshake, a
+hybrid+rerank+MMR retrieval with a filter and a progress stream, and shutdown.
+`→` is client→server, `←` is server→client. One JSON object per line on the wire.
+
+**1. Handshake.**
+
+```json
+→ {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"client":{"name":"my-app","version":"0.4"}}}
+← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"server":{"name":"acme-rag","version":"2.1"},"capabilities":{"retrieve":{"maxK":200,"modes":["dense","sparse","hybrid"],"citations":true},"rerank":{"methods":["cross-encoder","colbert"]},"filter":{"fields":{"year":"int","lang":"keyword"}},"streaming":{}}}}
+```
+
+**2. Retrieve** — hybrid recall, cross-encoder rerank of the top 100, MMR for
+diversity, restricted to recent English docs, streamed.
+
+```json
+→ {"jsonrpc":"2.0","id":2,"method":"retrieve","params":{
+     "query":"transformer attention complexity","k":5,"mode":"hybrid",
+     "rerank":{"method":"cross-encoder","topN":100},
+     "mmr":{"lambda":0.5},
+     "filter":{"and":[{"field":"lang","op":"eq","value":"en"},{"field":"year","op":"gte","value":2017}]},
+     "_meta":{"progressToken":"t2"}}}
+← {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"t2","progress":0.4,"message":"recall"}}
+← {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"t2","progress":0.8,"message":"rerank"}}
+← {"jsonrpc":"2.0","id":2,"result":{"hits":[
+     {"id":"arxiv:1706.03762#3","score":0.94,"text":"Attention is all you need …",
+      "citation":{"uri":"https://arxiv.org/abs/1706.03762","title":"Attention Is All You Need"},
+      "meta":{"year":2017}},
+     {"id":"arxiv:2009.14794#1","score":0.81,"text":"Rethinking attention with Performers …"}
+   ]}}
+```
+
+**3. Cancel a slow follow-up** (races with completion; client tolerates either
+outcome).
+
+```json
+→ {"jsonrpc":"2.0","id":3,"method":"graph","params":{"op":"global","query":"survey of efficient attention"}}
+→ {"jsonrpc":"2.0","method":"notifications/cancel","params":{"id":3,"reason":"user navigated away"}}
+← {"jsonrpc":"2.0","id":3,"error":{"code":-32006,"message":"cancelled"}}
+```
+
+**4. Shutdown.**
+
+```json
+→ {"jsonrpc":"2.0","id":4,"method":"shutdown","params":{}}
+← {"jsonrpc":"2.0","id":4,"result":{}}
+```
+
+## Appendix E — Change log
+
+| Version | Date | Changes |
+|---------|------|---------|
+| `RCP/1` 1.0 | 2025 | Initial stable release. Core methods (`initialize`, `info`, `embed`, `embed/sparse`, `embed/multi`, `rerank`, `retrieve`, `query/transform`, `graph`, `index/add`, `index/delete`, `catalog/list`, `shutdown`, `notifications/cancel`, `ping`), capability negotiation, stdio + HTTP(+SSE) transports, metadata filtering, streaming/progress, pagination, batching, structured errors with retryability, federation (registry + RRF fusion), and the type-theoretic C++ SDK with Python bindings. |

@@ -49,6 +49,8 @@ class Method:
     INDEX_ADD    = "index/add"
     INDEX_DELETE = "index/delete"
     CATALOG_LIST = "catalog/list"
+    CANCEL       = "notifications/cancel"
+    PING         = "ping"
     SHUTDOWN     = "shutdown"
 
 
@@ -64,6 +66,7 @@ class Errc:
     CAPABILITY_MISSING  = -32003
     UNKNOWN_METHOD      = -32004
     OPTION_UNSUPPORTED  = -32005
+    CANCELLED           = -32006
     BACKEND_UNAVAILABLE = -32010
     RATE_LIMITED        = -32011
 

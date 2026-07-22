@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://rcp-protocol.org/schema/rcp-1.0.json",
+  "$id": "https://1ay1.github.io/rcp/schema/rcp-1.0.json",
   "title": "Retrieval Context Protocol 1.0",
   "description": "Normative JSON Schema for all RCP/1 message shapes (SOTA-complete).",
   "$defs": {
@@ -77,13 +77,21 @@
         "filter": {
           "type": "object",
           "properties": {
-            "fields": { "type": "array", "items": { "type": "string" } },
+            "fields": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "object", "additionalProperties": { "type": "string" } }
+              ]
+            },
             "operators": { "type": "array", "items": { "type": "string" } }
           }
         },
-        "streaming": { "type": "boolean" },
-        "pagination": { "type": "boolean" },
-        "citations": { "type": "boolean" }
+        "streaming": { "type": "object" },
+        "pagination": { "type": "object" },
+        "citations": {
+          "oneOf": [ { "type": "boolean" }, { "type": "object" } ]
+        },
+        "catalog": { "type": "object" }
       },
       "additionalProperties": true
     },
@@ -374,6 +382,91 @@
       "type": "object",
       "required": ["deleted"],
       "properties": { "deleted": { "type": "integer", "minimum": 0 } }
+    },
+    "CatalogListParams": { "type": "object" },
+    "CatalogListResult": {
+      "type": "object",
+      "required": ["engines"],
+      "properties": {
+        "engines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "server", "capabilities"],
+            "properties": {
+              "id": { "type": "string" },
+              "server": { "$ref": "#/$defs/PeerInfo" },
+              "capabilities": { "$ref": "#/$defs/Capabilities" },
+              "endpoint": {
+                "type": "object",
+                "required": ["transport"],
+                "properties": {
+                  "transport": { "enum": ["stdio", "http"] },
+                  "url": { "type": "string" },
+                  "command": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "CancelNotification": {
+      "type": "object",
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "const": "notifications/cancel" },
+        "params": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": { "type": ["string", "number"] },
+            "reason": { "type": "string" }
+          }
+        }
+      }
+    },
+    "PingParams": {
+      "type": "object",
+      "properties": { "nonce": { "type": ["string", "number"] } }
+    },
+    "PingResult": {
+      "type": "object",
+      "properties": { "nonce": { "type": ["string", "number"] } }
+    },
+    "ErrorData": {
+      "type": "object",
+      "properties": {
+        "field": { "type": "string" },
+        "option": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "retryAfterMs": { "type": "integer", "minimum": 0 },
+        "detail": { "type": "string" }
+      }
+    },
+    "Registry": {
+      "type": "object",
+      "required": ["engines"],
+      "description": "An rcp.json engine registry (spec §16.1).",
+      "properties": {
+        "engines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "transport": { "enum": ["stdio", "http"] },
+              "command": { "type": "array", "items": { "type": "string" } },
+              "url": { "type": "string" },
+              "priority": { "type": "integer" },
+              "weight": { "type": "number", "minimum": 0 },
+              "required": { "type": "boolean" }
+            }
+          }
+        }
+      }
     }
   }
 }

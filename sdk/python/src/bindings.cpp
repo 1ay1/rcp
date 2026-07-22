@@ -174,7 +174,13 @@ struct PyClient {
         if (!r) raise(r.error());
         return json_to_py(*r);
     }
-    void shutdown() { if (cli) (void)cli->shutdown(); }
+    py::object ping(py::object nonce) {
+        Json n = nonce.is_none() ? Json(nullptr) : py_to_json(nonce);
+        auto r = cli->ping(n);
+        if (!r) raise(r.error());
+        return json_to_py(*r);
+    }
+    void shutdown_() { if (cli) (void)cli->shutdown(); }
 
     static PyClient from_client(Client&& c) { PyClient p; p.cli.emplace(std::move(c)); return p; }
 };
@@ -245,7 +251,8 @@ PYBIND11_MODULE(_rcp, m) {
         .def("rerank", &PyClient::rerank, py::arg("query"), py::arg("passages"))
         .def("retrieve", &PyClient::retrieve, py::arg("query"), py::arg("k") = 10, py::arg("opts") = py::none())
         .def("graph", &PyClient::graph, py::arg("op"), py::arg("params") = py::none())
-        .def("shutdown", &PyClient::shutdown);
+        .def("ping", &PyClient::ping, py::arg("nonce") = py::none())
+        .def("shutdown", &PyClient::shutdown_);
 
     py::class_<PyServer>(m, "Server")
         .def(py::init<>())

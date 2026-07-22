@@ -20,7 +20,8 @@
 <div class="spec-layout">
   <nav class="spec-toc">
     <div class="toc-title">Contents</div>
-    <a class="toc-2" href="#abstract">Abstract</a>
+    <a class="toc-2" href="#table-of-contents">Table of Contents</a>
+<a class="toc-2" href="#abstract">Abstract</a>
 <a class="toc-2" href="#1-goals-non-goals">1. Goals &amp; Non-Goals</a>
 <a class="toc-3" href="#11-goals">1.1 Goals</a>
 <a class="toc-3" href="#12-non-goals">1.2 Non-Goals</a>
@@ -32,12 +33,15 @@
 <a class="toc-3" href="#43-response-error">4.3 Response — error</a>
 <a class="toc-3" href="#44-_meta-and-extensions">4.4 `_meta` and extensions</a>
 <a class="toc-3" href="#45-notifications">4.5 Notifications</a>
+<a class="toc-3" href="#46-data-types">4.6 Data types</a>
+<a class="toc-3" href="#47-identifiers-concurrency-limits">4.7 Identifiers, concurrency &amp; limits</a>
 <a class="toc-2" href="#5-transports">5. Transports</a>
 <a class="toc-3" href="#51-stdio-recommended-default">5.1 stdio (RECOMMENDED default)</a>
 <a class="toc-3" href="#52-http">5.2 HTTP</a>
 <a class="toc-3" href="#53-compatibility-envelope">5.3 Compatibility envelope</a>
 <a class="toc-2" href="#6-capabilities">6. Capabilities</a>
 <a class="toc-3" href="#61-retrieve-capability-metadata">6.1 `retrieve` capability metadata</a>
+<a class="toc-3" href="#62-extension-registration-policy">6.2 Extension &amp; registration policy</a>
 <a class="toc-2" href="#7-methods">7. Methods</a>
 <a class="toc-3" href="#71-initialize-required">7.1 `initialize` — REQUIRED</a>
 <a class="toc-3" href="#72-info-required">7.2 `info` — REQUIRED</a>
@@ -52,11 +56,15 @@
 <a class="toc-3" href="#711-indexdelete-gated-by-index">7.11 `index/delete` — gated by `index`</a>
 <a class="toc-3" href="#712-shutdown-required">7.12 `shutdown` — REQUIRED</a>
 <a class="toc-3" href="#713-cataloglist-gated-by-catalog">7.13 `catalog/list` — gated by `catalog`</a>
+<a class="toc-3" href="#714-notificationscancel-client-notification">7.14 `notifications/cancel` — client notification</a>
+<a class="toc-3" href="#715-ping-required">7.15 `ping` — REQUIRED</a>
 <a class="toc-2" href="#8-metadata-filtering">8. Metadata filtering</a>
 <a class="toc-2" href="#9-streaming-progress">9. Streaming &amp; progress</a>
 <a class="toc-2" href="#10-pagination">10. Pagination</a>
 <a class="toc-2" href="#11-batching">11. Batching</a>
 <a class="toc-2" href="#12-errors">12. Errors</a>
+<a class="toc-3" href="#121-errordata">12.1 `error.data`</a>
+<a class="toc-3" href="#122-retryability">12.2 Retryability</a>
 <a class="toc-2" href="#13-session-lifecycle">13. Session Lifecycle</a>
 <a class="toc-2" href="#14-conformance">14. Conformance</a>
 <a class="toc-2" href="#15-security-considerations">15. Security Considerations</a>
@@ -68,11 +76,16 @@
 <a class="toc-2" href="#appendix-a-versioning-policy">Appendix A — Versioning Policy</a>
 <a class="toc-2" href="#appendix-b-mapping-sota-techniques-to-rcp">Appendix B — Mapping SOTA techniques to RCP</a>
 <a class="toc-2" href="#appendix-c-relationship-to-mcp-and-acp">Appendix C — Relationship to MCP and ACP</a>
+<a class="toc-2" href="#appendix-d-a-worked-session">Appendix D — A worked session</a>
+<a class="toc-2" href="#appendix-e-change-log">Appendix E — Change log</a>
   </nav>
   <main class="spec-content">
     <h1 id="retrieval-context-protocol-specification">Retrieval Context Protocol — Specification</h1>
-<p><strong>Version:</strong> 1.0 (<code>RCP/1</code>) <strong>Status:</strong> Stable <strong>Date:</strong> 2025 <strong>Editors:</strong> RCP Working Group</p>
-<blockquote>The key words <strong>MUST</strong>, <strong>MUST NOT</strong>, <strong>REQUIRED</strong>, <strong>SHALL</strong>, <strong>SHALL NOT</strong>, <strong>SHOULD</strong>, <strong>SHOULD NOT</strong>, <strong>RECOMMENDED</strong>, <strong>MAY</strong>, and <strong>OPTIONAL</strong> in this document are to be interpreted as described in <a href="https://www.rfc-editor.org/rfc/rfc2119">RFC 2119</a>.</blockquote>
+<p><strong>Version:</strong> 1.0 (<code>RCP/1</code>) <strong>Status:</strong> Stable <strong>Date:</strong> 2025 <strong>Editors:</strong> RCP Working Group <strong>This document:</strong> &lt;https://1ay1.github.io/rcp/spec/rcp-1.0.html&gt; <strong>Latest version:</strong> &lt;https://1ay1.github.io/rcp/spec/&gt; <strong>Normative schema:</strong> <a href="../schema/rcp-1.0.json"><code>/schema/rcp-1.0.json</code></a></p>
+<blockquote>The key words <strong>MUST</strong>, <strong>MUST NOT</strong>, <strong>REQUIRED</strong>, <strong>SHALL</strong>, <strong>SHALL NOT</strong>, <strong>SHOULD</strong>, <strong>SHOULD NOT</strong>, <strong>RECOMMENDED</strong>, <strong>MAY</strong>, and <strong>OPTIONAL</strong> in this document are to be interpreted as described in <a href="https://www.rfc-editor.org/rfc/rfc2119">RFC 2119</a> and <a href="https://www.rfc-editor.org/rfc/rfc8174">RFC 8174</a> when, and only when, they appear in all capitals, as shown here.</blockquote>
+<p>---</p>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul><li><a href="#abstract">Abstract</a></li><li><a href="#1-goals--non-goals">1. Goals &amp; Non-Goals</a></li><li><a href="#2-roles">2. Roles</a></li><li><a href="#3-the-retrieval-pipeline-model">3. The retrieval pipeline model</a></li><li><a href="#4-message-format">4. Message Format</a> — requests, <code>_meta</code>, notifications, <a href="#46-data-types">data types</a>, <a href="#47-identifiers-concurrency--limits">identifiers, concurrency &amp; limits</a></li><li><a href="#5-transports">5. Transports</a> — <a href="#51-stdio-recommended-default">stdio</a>, <a href="#52-http">HTTP</a>, <a href="#53-compatibility-envelope">compatibility envelope</a></li><li><a href="#6-capabilities">6. Capabilities</a> — <a href="#61-retrieve-capability-metadata"><code>retrieve</code> metadata</a>, <a href="#62-extension--registration-policy">extension &amp; registration policy</a></li><li><a href="#7-methods">7. Methods</a> — initialize, info, embed(×3), rerank, retrieve, transform, graph, index(×2), shutdown, catalog/list, cancel, ping</li><li><a href="#8-metadata-filtering">8. Metadata filtering</a></li><li><a href="#9-streaming--progress">9. Streaming &amp; progress</a></li><li><a href="#10-pagination">10. Pagination</a></li><li><a href="#11-batching">11. Batching</a></li><li><a href="#12-errors">12. Errors</a></li><li><a href="#13-session-lifecycle">13. Session Lifecycle</a></li><li><a href="#14-conformance">14. Conformance</a></li><li><a href="#15-security-considerations">15. Security Considerations</a></li><li><a href="#16-federation--querying-every-reachable-engine">16. Federation</a></li><li><a href="#appendix-a--versioning-policy">Appendix A — Versioning Policy</a></li><li><a href="#appendix-b--mapping-sota-retrieval-to-rcp">Appendix B — Mapping SOTA techniques to RCP</a></li><li><a href="#appendix-c--relationship-to-mcp-and-acp">Appendix C — Relationship to MCP and ACP</a></li><li><a href="#appendix-d--a-worked-session">Appendix D — A worked session</a></li><li><a href="#appendix-e--change-log">Appendix E — Change log</a></li></ul>
 <p>---</p>
 <h2 id="abstract">Abstract</h2>
 <p>The <strong>Retrieval Context Protocol (RCP)</strong> is an open, transport-agnostic, JSON-RPC 2.0 protocol that standardises how a <em>client</em> (an application, an agent runtime, an IDE) obtains retrieval context from a <em>server</em> (a RAG engine, a vector database, a search service, a knowledge graph).</p>
@@ -139,7 +152,25 @@
 <h3 id="44-_meta-and-extensions">4.4 <code>_meta</code> and extensions</h3>
 <p>Every params and result object <strong>MAY</strong> carry a <code>_meta</code> object for implementation-specific data (timings, trace ids, a <code>progressToken</code>). Peers <strong>MUST</strong> ignore <code>_meta</code> keys they do not understand. Vendor extension methods use a <code>x-&lt;vendor&gt;/</code> prefix; vendor capability/field keys use a <code>x-&lt;vendor&gt;</code> prefix. This keeps the core namespace clean and forward-compatible.</p>
 <h3 id="45-notifications">4.5 Notifications</h3>
-<p>A message with no <code>id</code> is a notification and <strong>MUST NOT</strong> be answered. RCP/1 defines <code>notifications/progress</code> (§9), emitted by a server during a long request only if the client attached a <code>progressToken</code> and the server advertised <code>streaming</code>.</p>
+<p>A message with no <code>id</code> is a notification and <strong>MUST NOT</strong> be answered. RCP/1 defines <code>notifications/progress</code> (§9) and <code>notifications/cancel</code> (§7.14).</p>
+<h3 id="46-data-types">4.6 Data types</h3>
+<p>RCP messages use only standard JSON types; the following conventions are normative:</p>
+<ul><li><strong>Integers</strong> (<code>k</code>, <code>dimension</code>, <code>topN</code>, vocabulary <code>indices</code>, byte offsets)</li></ul>
+<p>  are JSON numbers with no fractional part and <strong>MUST</strong> fit in a signed 53-bit   range (IEEE-754 double-exact). Implementations <strong>MUST NOT</strong> emit them as   strings.</p>
+<ul><li><strong>Floats</strong> (<code>score</code>, embedding components, <code>lambda</code>, <code>progress</code>) are JSON</li></ul>
+<p>  numbers. Special values (<code>NaN</code>, <code>Infinity</code>) are <strong>NOT</strong> valid JSON and <strong>MUST   NOT</strong> be emitted; a server that would produce them <strong>MUST</strong> substitute a   finite sentinel or omit the field.</p>
+<ul><li><strong>Strings</strong> are UTF-8. Servers <strong>MUST</strong> accept the full Unicode range in</li></ul>
+<p>  <code>query</code>/<code>text</code> and <strong>MUST NOT</strong> assume ASCII.</p>
+<ul><li><strong>Booleans</strong> are <code>true</code>/<code>false</code>, never <code>0</code>/<code>1</code> or <code>&quot;true&quot;</code>.</li><li><strong>Absent vs. <code>null</code>.</strong> An <strong>absent</strong> optional field means &quot;unspecified; use the</li></ul>
+<p>  default.&quot; An explicit <strong><code>null</code></strong> is only meaningful where a schema lists   <code>null</code> as a permitted type; elsewhere a peer <strong>MUST</strong> treat <code>null</code> as absent.   Producers <strong>SHOULD</strong> omit optional fields rather than send <code>null</code>.</p>
+<ul><li><strong>Enums</strong> are lower-case strings exactly as written in this document</li></ul>
+<p>  (<code>&quot;cross-encoder&quot;</code>, <code>&quot;hybrid&quot;</code>); comparison is case-sensitive.</p>
+<ul><li><strong>Unknown fields</strong> in any object <strong>MUST</strong> be ignored by the receiver, never</li></ul>
+<p>  rejected (forward compatibility). This does not apply to <code>filter</code> <em>field   names</em>, which are validated against the advertised set (§8).</p>
+<h3 id="47-identifiers-concurrency-limits">4.7 Identifiers, concurrency &amp; limits</h3>
+<p><strong>Request <code>id</code>.</strong> The <code>id</code> <strong>MUST</strong> be unique among a client&#x27;s in-flight requests on a connection. A client <strong>MAY</strong> reuse an <code>id</code> value only after it has received the response bearing that <code>id</code>. Servers <strong>MUST</strong> echo the request <code>id</code> unchanged (same JSON type and value) in the response. <code>id</code> <strong>MUST NOT</strong> be <code>null</code> on a request (a <code>null</code> id denotes a response to an unparseable request, per JSON-RPC).</p>
+<p><strong>Concurrency &amp; ordering.</strong> A client <strong>MAY</strong> have multiple requests in flight on one connection (pipelining). A server <strong>MAY</strong> answer them in any order; clients <strong>MUST</strong> correlate responses by <code>id</code>, not by arrival order. A server <strong>MAY</strong> process requests concurrently. <code>initialize</code> is the exception: a client <strong>MUST NOT</strong> send any other request until it has received the <code>initialize</code> response.</p>
+<p><strong>Message size &amp; limits.</strong> RCP sets no hard message-size limit, but servers <strong>SHOULD</strong> advertise and enforce operational bounds — <code>retrieve.maxK</code>, <code>rerank.maxCandidates</code>, <code>embed.batchLimit</code> — and reject requests that exceed them with <code>-32602</code> (<code>InvalidParams</code>), or shed load with <code>-32011</code> (<code>RateLimited</code>). Clients <strong>SHOULD</strong> treat these advertised bounds as authoritative and pre-clamp.</p>
 <p>---</p>
 <h2 id="5-transports">5. Transports</h2>
 <p>A message is byte-identical across transports; only framing differs.</p>
@@ -151,11 +182,21 @@
 <ul><li>EOF on stdin is an implicit <code>shutdown</code>.</li></ul>
 <h3 id="52-http">5.2 HTTP</h3>
 <ul><li>Each request is <code>POST &lt;base&gt;/&lt;method&gt;</code> (default base <code>/rcp</code>) with the JSON-RPC</li></ul>
-<p>  object as the body and <code>Content-Type: application/json</code>.</p>
-<ul><li>The response body is the JSON-RPC response with HTTP <code>200</code> for any well-formed</li></ul>
-<p>  JSON-RPC response (including JSON-RPC-level errors).</p>
-<ul><li>Server-Sent Events (<code>Accept: text/event-stream</code>) <strong>MAY</strong> be used to deliver</li></ul>
-<p>  <code>notifications/progress</code> frames followed by the final response, when the   server advertises <code>streaming</code>.</p>
+<p>  object as the body and <code>Content-Type: application/json</code>. The method in the URL   path <strong>MUST</strong> match the <code>method</code> in the body; on mismatch the server <strong>MUST</strong>   return <code>-32600</code>.</p>
+<ul><li>The response body is the JSON-RPC response with `Content-Type:</li></ul>
+<p>  application/json`.</p>
+<ul><li><strong>HTTP status mapping.</strong> The transport status is distinct from the JSON-RPC</li></ul>
+<p>  error. A well-formed JSON-RPC response — <em>including</em> one carrying a JSON-RPC   <code>error</code> — <strong>MUST</strong> be returned with HTTP <code>200</code>. Non-<code>200</code> codes are reserved   for transport-level failures the JSON-RPC layer never saw:</p>
+<table><thead><tr><th>HTTP</th><th>When</th></tr></thead><tbody><tr><td><code>200</code></td><td>Any well-formed JSON-RPC response (success <strong>or</strong> JSON-RPC error).</td></tr><tr><td><code>400</code></td><td>Body is not valid JSON / not a JSON-RPC request (equivalent to <code>-32700</code>/<code>-32600</code> when a body cannot be produced).</td></tr><tr><td><code>401</code> / <code>403</code></td><td>Deployment auth rejected the caller (RCP defines no auth; see below).</td></tr><tr><td><code>404</code></td><td>Unknown base path (not an RCP endpoint).</td></tr><tr><td><code>429</code></td><td>Transport-level rate limiting; <strong>SHOULD</strong> carry <code>Retry-After</code>. Mirrors <code>-32011</code>.</td></tr><tr><td><code>500</code> / <code>503</code></td><td>Server/back-end failure that prevented producing a JSON-RPC response. Mirrors <code>-32603</code>/<code>-32010</code>.</td></tr></tbody></table>
+<p>  Clients <strong>SHOULD</strong> prefer the JSON-RPC <code>error.code</code> when a <code>200</code> body is   present and treat non-<code>200</code> codes as transport faults.</p>
+<ul><li><strong>Streaming (SSE).</strong> When the client sends <code>Accept: text/event-stream</code> and the</li></ul>
+<p>  server advertised <code>streaming</code>, the server <strong>MAY</strong> respond with   <code>Content-Type: text/event-stream</code> and emit zero or more   <code>notifications/progress</code> frames followed by exactly one final frame carrying   the JSON-RPC response. Each frame is one SSE <code>data:</code> line whose payload is a   compact JSON object, terminated by a blank line. The stream ends after the   final response frame. If the client did not request SSE, the server <strong>MUST</strong>   return a single buffered JSON response.</p>
+<ul><li><strong>Sessions.</strong> HTTP is request-scoped, so <code>initialize</code> state does not persist</li></ul>
+<p>  across connections by default. A stateless HTTP server <strong>MAY</strong> treat every   request as implicitly initialized at its advertised capabilities and answer   <code>initialize</code>/<code>info</code> idempotently; such a server <strong>MUST</strong> still reject   capability-gated methods it does not advertise with <code>-32003</code>. A stateful HTTP   server <strong>MAY</strong> issue a session token in <code>initialize.result._meta.session</code> and   require it (e.g. header <code>RCP-Session</code>) on subsequent requests.</p>
+<ul><li><strong>Authentication.</strong> RCP carries no auth of its own. HTTP deployments <strong>MAY</strong></li></ul>
+<p>  require standard mechanisms (<code>Authorization: Bearer …</code>, mTLS, API-key   headers); these are opaque to the protocol and handled by the transport layer   before dispatch. Servers <strong>MUST</strong> apply auth before <code>initialize</code>.</p>
+<ul><li><strong>CORS.</strong> A browser-facing server <strong>SHOULD</strong> set appropriate</li></ul>
+<p>  <code>Access-Control-Allow-*</code> headers and handle <code>OPTIONS</code> preflight; the RCP   payload is unaffected.</p>
 <h3 id="53-compatibility-envelope">5.3 Compatibility envelope</h3>
 <p>A server <strong>MAY</strong> also accept the compact <code>{ &quot;method&quot;, &quot;params&quot; }</code> envelope. Clients <strong>MUST</strong> send full JSON-RPC 2.0.</p>
 <p>---</p>
@@ -174,6 +215,15 @@
 <ul><li><code>modes</code> — the retrieval modes the server supports.</li><li><code>fusion</code> — fusion strategies available when <code>mode:&quot;hybrid&quot;</code>.</li><li><code>mmr</code> — whether MMR diversification can be requested inline.</li><li><code>rerankBuiltin</code> — whether the server can rerank inside <code>retrieve</code> (vs a</li></ul>
 <p>  separate <code>rerank</code> call).</p>
 <p>Servers <strong>MAY</strong> add extension capability keys prefixed <code>x-&lt;vendor&gt;</code>; clients <strong>MUST</strong> ignore unrecognised keys.</p>
+<h3 id="62-extension-registration-policy">6.2 Extension &amp; registration policy</h3>
+<p>RCP is designed to grow additively without breaking the wire. Names are partitioned into three spaces:</p>
+<ul><li><strong>Core</strong> — the method names, capability keys, enum values, and error codes</li></ul>
+<p>  defined in this document. These are reserved; only a future RCP revision may   add to core (Appendix A).</p>
+<ul><li><strong>Vendor extensions</strong> — any implementer <strong>MAY</strong> introduce experimental or</li></ul>
+<p>  proprietary surface <em>without</em> central coordination by using the <code>x-&lt;vendor&gt;</code>   convention: extension <strong>methods</strong> are named <code>x-&lt;vendor&gt;/&lt;name&gt;</code> (e.g.   <code>x-acme/rerank-v2</code>), extension <strong>capability keys</strong> and <strong>object fields</strong> are   named <code>x-&lt;vendor&gt;</code> or <code>x-&lt;vendor&gt;-&lt;name&gt;</code>. A peer <strong>MUST</strong> ignore any   <code>x-</code>-prefixed name it does not understand. Extension methods are still gated:   a client <strong>MUST NOT</strong> call <code>x-acme/*</code> unless the server advertised a matching   <code>x-acme</code> capability.</p>
+<ul><li><strong><code>_meta</code></strong> — free-form side-band data (timings, trace ids, <code>progressToken</code>,</li></ul>
+<p>  session tokens) attached to any params or result object, never affecting core   semantics. Keys are implementation-defined; unknown keys are ignored.</p>
+<p>A name that proves broadly useful <strong>SHOULD</strong> be proposed for core registration in a subsequent revision, at which point it drops its <code>x-</code> prefix. There is no run-time registry service; capability negotiation <em>is</em> the discovery mechanism.</p>
 <p>---</p>
 <h2 id="7-methods">7. Methods</h2>
 <p>All methods after <code>initialize</code> are gated on the matching capability.</p>
@@ -272,6 +322,20 @@
       &quot;capabilities&quot;: { &quot;retrieve&quot;: { &quot;maxK&quot;: 100 } },
       &quot;endpoint&quot;?: { &quot;transport&quot;: &quot;http&quot;, &quot;url&quot;: &quot;http://…/rcp&quot; } } ] }</code></pre>
 <p>Each entry mirrors an <code>initialize.result</code> (identity + capabilities) plus an optional <code>endpoint</code> a client may connect to directly. An aggregator that only proxies (never exposes downstream endpoints) omits <code>endpoint</code>; clients then query through the aggregator&#x27;s own <code>retrieve</code>, which fuses internally.</p>
+<h3 id="714-notificationscancel-client-notification">7.14 <code>notifications/cancel</code> — client notification</h3>
+<p>A client <strong>MAY</strong> ask a server to abandon an in-flight request (a long <code>retrieve</code>, <code>rerank</code>, or <code>graph</code> call). Cancellation is a <strong>notification</strong> (no <code>id</code>, no response):</p>
+<pre class="code" data-lang="json"><code>{ &quot;jsonrpc&quot;: &quot;2.0&quot;, &quot;method&quot;: &quot;notifications/cancel&quot;,
+  &quot;params&quot;: { &quot;id&quot;: 7, &quot;reason&quot;?: &quot;user aborted&quot; } }</code></pre>
+<ul><li><code>params.id</code> is the <code>id</code> of the request to cancel.</li><li>On receipt the server <strong>SHOULD</strong> stop work for that request as soon as</li></ul>
+<p>  practical. It then <strong>MUST</strong> still send exactly one response for the cancelled   request: either the normal result (if it had already completed or completion   is cheaper than aborting) or an error with code <code>-32006</code> (<code>Cancelled</code>).</p>
+<ul><li>Cancelling an unknown or already-answered <code>id</code> is a no-op the server <strong>MUST</strong></li></ul>
+<p>  ignore. Because of the inherent race, a client <strong>MUST</strong> tolerate receiving a   full successful result after it sent a cancel.</p>
+<ul><li>Cancellation is always available; it needs no capability. It is a</li></ul>
+<p>  best-effort hint, not a guarantee of immediate termination.</p>
+<h3 id="715-ping-required">7.15 <code>ping</code> — REQUIRED</h3>
+<p>Liveness / round-trip check. Callable any time (including before <code>initialize</code>), never changes state.</p>
+<p><strong>Params</strong> <code>{ &quot;nonce&quot;?: string | number }</code> · <strong>Result</strong> <code>{ &quot;nonce&quot;?: same }</code></p>
+<p>The server <strong>MUST</strong> echo any <code>nonce</code> it received. Clients use <code>ping</code> for keep-alive on long-lived connections and to measure round-trip latency; a Selector (§16) uses it for the liveness probe behind primary→secondary fallback.</p>
 <p>---</p>
 <h2 id="8-metadata-filtering">8. Metadata filtering</h2>
 <p>When <code>filter</code> is advertised, <code>retrieve.filter</code> accepts a small boolean tree. Servers advertise allowed <code>fields</code> and <code>operators</code>.</p>
@@ -294,8 +358,15 @@
 <p>Clients <strong>MAY</strong> send a JSON array of request objects (JSON-RPC batch); the server <strong>MUST</strong> reply with an array of the corresponding responses. <code>embed</code>, <code>embed/sparse</code>, <code>embed/multi</code>, and <code>rerank</code> are inherently batched via their array params and <strong>SHOULD</strong> be preferred over JSON-RPC batching for throughput.</p>
 <p>---</p>
 <h2 id="12-errors">12. Errors</h2>
-<table><thead><tr><th>Code</th><th>Symbol</th><th>Meaning</th></tr></thead><tbody><tr><td><code>-32700</code></td><td><code>ParseError</code></td><td>Invalid JSON.</td></tr><tr><td><code>-32600</code></td><td><code>InvalidRequest</code></td><td>Not a valid Request object.</td></tr><tr><td><code>-32601</code></td><td><code>MethodNotFound</code></td><td>(Reserved; RCP prefers <code>-32004</code>.)</td></tr><tr><td><code>-32602</code></td><td><code>InvalidParams</code></td><td>Missing/malformed params or filter field.</td></tr><tr><td><code>-32603</code></td><td><code>InternalError</code></td><td>Server-side failure.</td></tr><tr><td><code>-32001</code></td><td><code>NotInitialized</code></td><td>Called before <code>initialize</code>.</td></tr><tr><td><code>-32002</code></td><td><code>VersionMismatch</code></td><td>No common protocol version.</td></tr><tr><td><code>-32003</code></td><td><code>CapabilityMissing</code></td><td>Method exists but not advertised.</td></tr><tr><td><code>-32004</code></td><td><code>UnknownMethod</code></td><td>Method not defined by RCP.</td></tr><tr><td><code>-32005</code></td><td><code>OptionUnsupported</code></td><td>A requested option (mode/method) is not advertised.</td></tr><tr><td><code>-32010</code></td><td><code>BackendUnavailable</code></td><td>Model offline, index not built, upstream down.</td></tr><tr><td><code>-32011</code></td><td><code>RateLimited</code></td><td>Server is shedding load; client should back off.</td></tr></tbody></table>
-<p>Servers <strong>MAY</strong> attach <code>error.data</code>.</p>
+<p>Every failure is a JSON-RPC error object: <code>{ &quot;code&quot;: int, &quot;message&quot;: string, &quot;data&quot;?: any }</code>. Codes in the <code>-32000..-32099</code> block are RCP-specific; the rest are standard JSON-RPC.</p>
+<table><thead><tr><th>Code</th><th>Symbol</th><th>Meaning</th></tr></thead><tbody><tr><td><code>-32700</code></td><td><code>ParseError</code></td><td>Invalid JSON.</td></tr><tr><td><code>-32600</code></td><td><code>InvalidRequest</code></td><td>Not a valid Request object.</td></tr><tr><td><code>-32601</code></td><td><code>MethodNotFound</code></td><td>(Reserved; RCP prefers <code>-32004</code>.)</td></tr><tr><td><code>-32602</code></td><td><code>InvalidParams</code></td><td>Missing/malformed params or filter field.</td></tr><tr><td><code>-32603</code></td><td><code>InternalError</code></td><td>Server-side failure.</td></tr><tr><td><code>-32001</code></td><td><code>NotInitialized</code></td><td>Called before <code>initialize</code>.</td></tr><tr><td><code>-32002</code></td><td><code>VersionMismatch</code></td><td>No common protocol version.</td></tr><tr><td><code>-32003</code></td><td><code>CapabilityMissing</code></td><td>Method exists but not advertised.</td></tr><tr><td><code>-32004</code></td><td><code>UnknownMethod</code></td><td>Method not defined by RCP.</td></tr><tr><td><code>-32005</code></td><td><code>OptionUnsupported</code></td><td>A requested option (mode/method) is not advertised.</td></tr><tr><td><code>-32006</code></td><td><code>Cancelled</code></td><td>Request was cancelled via <code>notifications/cancel</code> (§7.14).</td></tr><tr><td><code>-32010</code></td><td><code>BackendUnavailable</code></td><td>Model offline, index not built, upstream down.</td></tr><tr><td><code>-32011</code></td><td><code>RateLimited</code></td><td>Server is shedding load; client should back off.</td></tr></tbody></table>
+<p>The range <code>-32000..-32099</code> is reserved for RCP; implementers <strong>MUST NOT</strong> define custom codes there. Vendor-specific failures <strong>SHOULD</strong> reuse the closest code above and disambiguate in <code>error.data</code>.</p>
+<h3 id="121-errordata">12.1 <code>error.data</code></h3>
+<p>Servers <strong>MAY</strong> attach a structured <code>error.data</code> object. When present it <strong>SHOULD</strong> use these conventional fields (all optional):</p>
+<table><thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead><tbody><tr><td><code>field</code></td><td>string</td><td>The offending params path, e.g. <code>&quot;filter.year&quot;</code> (for <code>-32602</code>).</td></tr><tr><td><code>option</code></td><td>string</td><td>The unsupported mode/method (for <code>-32005</code>).</td></tr><tr><td><code>retryable</code></td><td>boolean</td><td>Whether an identical retry might succeed.</td></tr><tr><td><code>retryAfterMs</code></td><td>integer</td><td>Hint to wait before retrying (for <code>-32011</code>/<code>-32010</code>).</td></tr><tr><td><code>detail</code></td><td>string</td><td>Human-readable diagnostic (never for control flow).</td></tr></tbody></table>
+<h3 id="122-retryability">12.2 Retryability</h3>
+<p>Clients <strong>SHOULD</strong> apply the following retry policy. Retries <strong>SHOULD</strong> use exponential backoff with jitter, honouring <code>retryAfterMs</code>/<code>Retry-After</code> when given.</p>
+<table><thead><tr><th>Code</th><th>Retryable?</th><th>Client action</th></tr></thead><tbody><tr><td><code>-32011</code> <code>RateLimited</code></td><td>yes</td><td>Back off and retry the same request.</td></tr><tr><td><code>-32010</code> <code>BackendUnavailable</code></td><td>yes (transient)</td><td>Retry with backoff; after a bound, fail over (Selector) or drop the engine (Federation).</td></tr><tr><td><code>-32603</code> <code>InternalError</code></td><td>maybe</td><td>Retry once; if it recurs, treat as fatal.</td></tr><tr><td><code>-32001</code> <code>NotInitialized</code></td><td>yes, after fixing</td><td>Send <code>initialize</code>, then retry.</td></tr><tr><td><code>-32002</code> <code>VersionMismatch</code></td><td>no</td><td>Abort; no common version.</td></tr><tr><td><code>-32003</code> / <code>-32004</code> / <code>-32005</code></td><td>no</td><td>Programming/capability error; do not retry.</td></tr><tr><td><code>-32602</code> <code>InvalidParams</code></td><td>no</td><td>Fix the request.</td></tr><tr><td><code>-32006</code> <code>Cancelled</code></td><td>n/a</td><td>Expected after a cancel; do not retry automatically.</td></tr></tbody></table>
 <p>---</p>
 <h2 id="13-session-lifecycle">13. Session Lifecycle</h2>
 <pre class="code" data-lang=""><code>Client                              Server
@@ -310,10 +381,14 @@
 <p>---</p>
 <h2 id="14-conformance">14. Conformance</h2>
 <p>A <strong>minimal RCP/1 server</strong> <strong>MUST</strong>:</p>
-<ol><li>Answer <code>initialize</code> with negotiated <code>protocolVersion</code> ≥ 1 and <code>info</code> any time.</li><li>Advertise at least one of <code>embed</code>, <code>rerank</code>, <code>retrieve</code>, <code>graph</code>.</li><li>Reject pre-<code>initialize</code> requests with <code>-32001</code>.</li><li>Reject un-advertised capability methods with <code>-32003</code>, undefined methods with</li></ol>
+<ol><li>Answer <code>initialize</code> with negotiated <code>protocolVersion</code> ≥ 1, and <code>info</code> and</li></ol>
+<p>   <code>ping</code> at any time (including before <code>initialize</code>).</p>
+<ol><li>Advertise at least one of <code>embed</code>, <code>rerank</code>, <code>retrieve</code>, <code>graph</code>.</li><li>Reject pre-<code>initialize</code> requests (other than <code>info</code>/<code>ping</code>) with <code>-32001</code>.</li><li>Reject un-advertised capability methods with <code>-32003</code>, undefined methods with</li></ol>
 <p>   <code>-32004</code>, and unsupported advertised-method options with <code>-32005</code>.</p>
-<ol><li>Return well-formed JSON-RPC 2.0 for every request; validate params and return</li></ol>
-<p>   <code>-32602</code> on malformed input instead of crashing.</p>
+<ol><li>Return well-formed JSON-RPC 2.0 for every request; echo the request <code>id</code></li></ol>
+<p>   unchanged; validate params and return <code>-32602</code> on malformed input instead of    crashing.</p>
+<ol><li>Ignore any notification it does not understand, and treat</li></ol>
+<p>   <code>notifications/cancel</code> for an unknown <code>id</code> as a no-op.</p>
 <p>A <strong>SOTA RCP/1 server</strong> additionally <strong>SHOULD</strong> advertise and implement <code>retrieve</code> with <code>modes:[&quot;dense&quot;,&quot;sparse&quot;,&quot;hybrid&quot;]</code>, <code>rerank</code> with a cross-encoder and/or ColBERT method, <code>filter</code>, and <code>citations</code>, and <strong>MAY</strong> implement <code>transform</code>, <code>graph</code>, <code>multiVector</code>, <code>sparseEmbed</code>, <code>streaming</code>, and <code>pagination</code>.</p>
 <p>A <strong>conforming client</strong> <strong>MUST</strong> send <code>initialize</code> first, honour the negotiated version, never call an unadvertised method or pass an unadvertised option (unless <code>strict:false</code>), and tolerate unknown fields/<code>_meta</code>/capability keys.</p>
 <p>The JSON Schemas in <a href="../schema"><code>/schema</code></a> are normative for message shapes; the <a href="../conformance"><code>/conformance</code></a> suite validates any server.</p>
@@ -358,6 +433,35 @@
 <table><thead><tr><th>Technique</th><th>RCP surface</th></tr></thead><tbody><tr><td>BM25 / lexical</td><td><code>retrieve mode:&quot;sparse&quot;</code></td></tr><tr><td>Dense bi-encoder (e5/BGE/GTE)</td><td><code>retrieve mode:&quot;dense&quot;</code>, or <code>embed</code> for client-side ANN</td></tr><tr><td>Learned-sparse (SPLADE)</td><td><code>sparseEmbed</code> + <code>retrieve mode:&quot;sparse&quot;</code></td></tr><tr><td>Hybrid + RRF</td><td><code>retrieve mode:&quot;hybrid&quot;, fusion:{method:&quot;rrf&quot;}</code></td></tr><tr><td>Cross-encoder rerank</td><td><code>rerank method:&quot;cross-encoder&quot;</code> or <code>retrieve.rerank</code></td></tr><tr><td>Late interaction (ColBERT)</td><td><code>multiVector</code> + <code>rerank method:&quot;colbert&quot;</code></td></tr><tr><td>MMR diversification</td><td><code>retrieve.mmr</code></td></tr><tr><td>Query rewrite / HyDE / multi-query</td><td><code>query/transform</code> or <code>retrieve.rewrite</code></td></tr><tr><td>Multi-hop / agentic</td><td>client loop over <code>query/transform</code> + <code>retrieve</code> + <code>graph:&quot;drift&quot;</code></td></tr><tr><td>GraphRAG local/global</td><td>`graph op:&quot;local&quot;</td><td>&quot;global&quot;`</td></tr><tr><td>Contextual retrieval (Anthropic)</td><td><code>index/add contextual:true</code></td></tr><tr><td>Citations / attribution</td><td><code>citations</code> capability, <code>Hit.citation</code></td></tr><tr><td>Freshness / recency bias</td><td><code>retrieve.recency</code></td></tr><tr><td>Metadata filtering</td><td><code>filter</code> capability, <code>retrieve.filter</code></td></tr></tbody></table>
 <h2 id="appendix-c-relationship-to-mcp-and-acp">Appendix C — Relationship to MCP and ACP</h2>
 <p>An agent runtime speaks <strong>ACP</strong> to its client, calls tools via <strong>MCP</strong>, and fetches grounding context via <strong>RCP</strong>. The three share JSON-RPC framing, the <code>initialize</code>/capabilities handshake, <code>_meta</code> extensibility, and cursor-based pagination, so an implementer of one is immediately productive in another.</p>
+<h2 id="appendix-d-a-worked-session">Appendix D — A worked session</h2>
+<p>A complete stdio session against a SOTA server, showing the handshake, a hybrid+rerank+MMR retrieval with a filter and a progress stream, and shutdown. <code>→</code> is client→server, <code>←</code> is server→client. One JSON object per line on the wire.</p>
+<p><strong>1. Handshake.</strong></p>
+<pre class="code" data-lang="json"><code>→ {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{&quot;protocolVersion&quot;:1,&quot;client&quot;:{&quot;name&quot;:&quot;my-app&quot;,&quot;version&quot;:&quot;0.4&quot;}}}
+← {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;result&quot;:{&quot;protocolVersion&quot;:1,&quot;server&quot;:{&quot;name&quot;:&quot;acme-rag&quot;,&quot;version&quot;:&quot;2.1&quot;},&quot;capabilities&quot;:{&quot;retrieve&quot;:{&quot;maxK&quot;:200,&quot;modes&quot;:[&quot;dense&quot;,&quot;sparse&quot;,&quot;hybrid&quot;],&quot;citations&quot;:true},&quot;rerank&quot;:{&quot;methods&quot;:[&quot;cross-encoder&quot;,&quot;colbert&quot;]},&quot;filter&quot;:{&quot;fields&quot;:{&quot;year&quot;:&quot;int&quot;,&quot;lang&quot;:&quot;keyword&quot;}},&quot;streaming&quot;:{}}}}</code></pre>
+<p><strong>2. Retrieve</strong> — hybrid recall, cross-encoder rerank of the top 100, MMR for diversity, restricted to recent English docs, streamed.</p>
+<pre class="code" data-lang="json"><code>→ {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;method&quot;:&quot;retrieve&quot;,&quot;params&quot;:{
+     &quot;query&quot;:&quot;transformer attention complexity&quot;,&quot;k&quot;:5,&quot;mode&quot;:&quot;hybrid&quot;,
+     &quot;rerank&quot;:{&quot;method&quot;:&quot;cross-encoder&quot;,&quot;topN&quot;:100},
+     &quot;mmr&quot;:{&quot;lambda&quot;:0.5},
+     &quot;filter&quot;:{&quot;and&quot;:[{&quot;field&quot;:&quot;lang&quot;,&quot;op&quot;:&quot;eq&quot;,&quot;value&quot;:&quot;en&quot;},{&quot;field&quot;:&quot;year&quot;,&quot;op&quot;:&quot;gte&quot;,&quot;value&quot;:2017}]},
+     &quot;_meta&quot;:{&quot;progressToken&quot;:&quot;t2&quot;}}}
+← {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;notifications/progress&quot;,&quot;params&quot;:{&quot;progressToken&quot;:&quot;t2&quot;,&quot;progress&quot;:0.4,&quot;message&quot;:&quot;recall&quot;}}
+← {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;notifications/progress&quot;,&quot;params&quot;:{&quot;progressToken&quot;:&quot;t2&quot;,&quot;progress&quot;:0.8,&quot;message&quot;:&quot;rerank&quot;}}
+← {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;result&quot;:{&quot;hits&quot;:[
+     {&quot;id&quot;:&quot;arxiv:1706.03762#3&quot;,&quot;score&quot;:0.94,&quot;text&quot;:&quot;Attention is all you need …&quot;,
+      &quot;citation&quot;:{&quot;uri&quot;:&quot;https://arxiv.org/abs/1706.03762&quot;,&quot;title&quot;:&quot;Attention Is All You Need&quot;},
+      &quot;meta&quot;:{&quot;year&quot;:2017}},
+     {&quot;id&quot;:&quot;arxiv:2009.14794#1&quot;,&quot;score&quot;:0.81,&quot;text&quot;:&quot;Rethinking attention with Performers …&quot;}
+   ]}}</code></pre>
+<p><strong>3. Cancel a slow follow-up</strong> (races with completion; client tolerates either outcome).</p>
+<pre class="code" data-lang="json"><code>→ {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:3,&quot;method&quot;:&quot;graph&quot;,&quot;params&quot;:{&quot;op&quot;:&quot;global&quot;,&quot;query&quot;:&quot;survey of efficient attention&quot;}}
+→ {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;method&quot;:&quot;notifications/cancel&quot;,&quot;params&quot;:{&quot;id&quot;:3,&quot;reason&quot;:&quot;user navigated away&quot;}}
+← {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:3,&quot;error&quot;:{&quot;code&quot;:-32006,&quot;message&quot;:&quot;cancelled&quot;}}</code></pre>
+<p><strong>4. Shutdown.</strong></p>
+<pre class="code" data-lang="json"><code>→ {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:4,&quot;method&quot;:&quot;shutdown&quot;,&quot;params&quot;:{}}
+← {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:4,&quot;result&quot;:{}}</code></pre>
+<h2 id="appendix-e-change-log">Appendix E — Change log</h2>
+<table><thead><tr><th>Version</th><th>Date</th><th>Changes</th></tr></thead><tbody><tr><td><code>RCP/1</code> 1.0</td><td>2025</td><td>Initial stable release. Core methods (<code>initialize</code>, <code>info</code>, <code>embed</code>, <code>embed/sparse</code>, <code>embed/multi</code>, <code>rerank</code>, <code>retrieve</code>, <code>query/transform</code>, <code>graph</code>, <code>index/add</code>, <code>index/delete</code>, <code>catalog/list</code>, <code>shutdown</code>, <code>notifications/cancel</code>, <code>ping</code>), capability negotiation, stdio + HTTP(+SSE) transports, metadata filtering, streaming/progress, pagination, batching, structured errors with retryability, federation (registry + RRF fusion), and the type-theoretic C++ SDK with Python bindings.</td></tr></tbody></table>
   </main>
 </div>
 </body>

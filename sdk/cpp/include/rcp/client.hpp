@@ -125,6 +125,14 @@ public:
         return request(method_name, std::move(params));
     }
 
+    // Liveness / round-trip check. Ungated; echoes any nonce. Returns the result
+    // object (which carries the echoed nonce, if one was sent).
+    [[nodiscard]] Result<Json> ping(Json nonce = Json(nullptr)) {
+        Json p = Json::object();
+        if (!nonce.is_null()) p["nonce"] = std::move(nonce);
+        return request(method::Ping, std::move(p));
+    }
+
     Result<void> shutdown() {
         auto r = request(method::Shutdown, Json::object());
         transport_->close();
