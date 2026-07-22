@@ -28,6 +28,64 @@ query ─▶ [transform] ─▶ [retrieve: dense|sparse|hybrid] ─▶ [fuse]
 | Graph retrieval | `graph` (`op` = `local`/`global`/`drift`) | `graph` |
 | Indexing | `index/add`, `index/delete` | `index` |
 
+## Stage by stage
+
+Every stage except **recall** is optional and independently negotiated — a
+server advertises only what it implements, and a client sees the rest as absent.
+
+<Steps>
+  <Step title="Transform — sharpen the query" icon="wand-magic-sparkles">
+    Rewrite, expand, or decompose the raw query before recall: HyDE (embed a
+    hypothetical answer), multi-query (fan out into paraphrases), step-back
+    (generalise), or decomposition (split a multi-hop question into parts).
+    Exposed as `query/transform`, or folded into a `retrieve` call via
+    `retrieve.rewrite`. *Capability:* `transform`.
+  </Step>
+  <Step title="Recall — cast a wide net" icon="magnifying-glass">
+    Fetch a large candidate set cheaply. `mode` picks the matcher: `dense`
+    (bi-encoder semantic search), `sparse` (BM25 or learned-sparse / SPLADE
+    lexical), or `hybrid` (both at once). This is the one stage always present.
+    *Capability:* `retrieve`.
+  </Step>
+  <Step title="Fuse — merge the lists" icon="code-merge">
+    When recall runs more than one matcher, their scores are not comparable, so
+    the ranked lists are merged by **rank**: reciprocal-rank fusion (`rrf`) or a
+    `weighted` blend. Controlled by `retrieve.fusion`.
+  </Step>
+  <Step title="Rerank — score precisely" icon="arrow-down-wide-short">
+    Rescore the surviving candidates with an expensive, accurate model: a
+    cross-encoder, ColBERT late interaction (MaxSim), or an LLM judge. Available
+    standalone as [`rerank`](/methods/rerank) or inside `retrieve`.
+    *Capability:* `rerank`.
+  </Step>
+  <Step title="Diversify — cut redundancy" icon="shapes">
+    Maximal Marginal Relevance (MMR) trades a little relevance for novelty so the
+    final set isn't five paraphrases of one passage. Controlled by
+    `retrieve.mmr`. *Capability:* `retrieve.mmr`.
+  </Step>
+  <Step title="Pack + cite — assemble the answer" icon="quote-left">
+    Return the best `k` hits, each with its `citation`, `trust` signals, and
+    enough chunk context to ground a generation step.
+  </Step>
+</Steps>
+
+## Beside the pipeline
+
+Three surfaces sit next to the linear flow rather than inside it:
+
+<CardGroup cols={3}>
+  <Card title="Graph" icon="diagram-project" href="/methods/graph">
+    Local (entity-anchored), global (community-summary), or DRIFT search over a
+    knowledge graph — GraphRAG.
+  </Card>
+  <Card title="Index" icon="database" href="/methods/index">
+    Mutate the corpus the pipeline runs over with `index/add` and `index/delete`.
+  </Card>
+  <Card title="Embed" icon="vector-square" href="/methods/embed">
+    Expose the server's vectors so a client can build its own ANN index.
+  </Card>
+</CardGroup>
+
 ## Two ways to drive it
 
 <CardGroup cols={2}>

@@ -22,7 +22,7 @@
 - [Abstract](#abstract)
 - [1. Goals & Non-Goals](#1-goals--non-goals)
 - [2. Roles](#2-roles)
-- [3. The retrieval pipeline model](#3-the-retrieval-pipeline-model)
+- [3. The retrieval pipeline model](#3-the-retrieval-pipeline-model) — [stages](#31-pipeline-stages), [adjacent surfaces](#32-adjacent-surfaces), [funnel invariant](#33-the-funnel-invariant), [driving it](#34-two-ways-to-drive-it)
 - [4. Message Format](#4-message-format) — requests, `_meta`, notifications, [data types](#46-data-types), [identifiers, concurrency & limits](#47-identifiers-concurrency--limits), [content & modality](#48-content--modality)
 - [5. Transports](#5-transports) — [stdio](#51-stdio-recommended-default), [HTTP](#52-http), [compatibility envelope](#53-compatibility-envelope)
 - [6. Capabilities](#6-capabilities) — [`retrieve` metadata](#61-retrieve-capability-metadata), [extension & registration policy](#62-extension--registration-policy)
@@ -126,29 +126,69 @@ A process **MAY** act as both (a gateway/router).
 
 ## 3. The retrieval pipeline model
 
-RCP is shaped around the canonical production RAG pipeline, so each stage maps
-to a protocol surface. A server implements whichever stages it offers:
+RCP is shaped around the **canonical production RAG pipeline**, so each stage
+maps to a protocol surface a server can offer independently. The same protocol
+therefore describes a one-line semantic-search box *and* a full
+hybrid-plus-graph engine — the difference is only which stages are advertised.
 
 ```
-query ─▶ [transform] ─▶ [retrieve: dense|sparse|hybrid] ─▶ [fuse]
-      ─▶ [rerank: cross-encoder|colbert] ─▶ [diversify: mmr]
-      ─▶ [pack + cite] ─▶ hits
+  query
+    │
+    ▼
+ ┌───────────┐   ┌────────────────────────┐   ┌────────┐
+ │ transform │─▶│  recall                 │─▶│  fuse  │
+ │  (opt.)   │   │  dense · sparse · hybrid │   │  (rrf) │
+ └───────────┘   └────────────────────────┘   └───┬────┘
+                                                   │
+   hits  ◀── pack + cite ◀── diversify  ◀──  rerank ◀┘
+                            (mmr, opt.)    (opt.)
 ```
 
-| Stage | Method / option | Capability |
-|-------|-----------------|------------|
-| Query transformation | `query/transform`, or `retrieve.rewrite` | `transform` |
-| Candidate retrieval | `retrieve` with `mode` = `dense`/`sparse`/`hybrid` | `retrieve` |
-| Embedding (for client-side ANN) | `embed`, `embed/sparse`, `embed/multi` | `embed`, `sparseEmbed`, `multiVector` |
-| Fusion | `retrieve.fusion` = `rrf`/`weighted` | (part of `retrieve.hybrid`) |
-| Reranking | `rerank` (`method` = `cross-encoder`/`colbert`) | `rerank` |
-| Diversification | `retrieve.mmr` | `retrieve.mmr` |
-| Graph retrieval | `graph` (`op` = `local`/`global`/`drift`) | `graph` |
-| Indexing | `index/add`, `index/delete` | `index` |
+Every stage **except recall is optional and independently negotiated.** A server
+advertises the stages it implements; a client either calls a single `retrieve`
+and lets the server run the whole chain, or drives the stages one at a time.
 
-A client that only wants "the best hits for this query" calls `retrieve` and
-lets the server run its full pipeline. A client that orchestrates its own
-pipeline can call the stages individually.
+### 3.1 Pipeline stages
+
+| Stage | What it does | Method / option | Capability |
+|-------|--------------|-----------------|------------|
+| **Transform** | Rewrite, expand, or decompose the query (HyDE, multi-query, step-back) before recall. | `query/transform`, or `retrieve.rewrite` | `transform` |
+| **Recall** | Fetch a wide candidate set — dense (bi-encoder), sparse lexical / learned-sparse, or both. | `retrieve` with `mode` = `dense`/`sparse`/`hybrid` | `retrieve` |
+| **Fuse** | Merge several ranked lists (e.g. dense + sparse) by **rank**, since scores are not comparable across retrievers. | `retrieve.fusion` = `rrf`/`weighted` | part of `retrieve.hybrid` |
+| **Rerank** | Rescore the top candidates precisely with a cross-encoder, ColBERT late interaction, or an LLM judge. | `rerank` (`method` = `cross-encoder`/`colbert`) | `rerank` |
+| **Diversify** | Trade relevance for novelty (MMR) to drop near-duplicate hits. | `retrieve.mmr` | `retrieve.mmr` |
+| **Pack + cite** | Assemble the final `k` hits with citations, trust signals, and chunk context. | `retrieve` result | `retrieve` |
+
+### 3.2 Adjacent surfaces
+
+Three surfaces sit **beside** the linear pipeline rather than inside it:
+
+| Surface | What it does | Method | Capability |
+|---------|--------------|--------|------------|
+| **Graph** | Entity-anchored (local), community-summary (global), or DRIFT search over a knowledge graph. | `graph` (`op` = `local`/`global`/`drift`) | `graph` |
+| **Index** | Mutate the corpus the pipeline runs over. | `index/add`, `index/delete` | `index` |
+| **Embed** | Expose the server's vectors so a client can build its own ANN index. | `embed`, `embed/sparse`, `embed/multi` | `embed`, `sparseEmbed`, `multiVector` |
+
+### 3.3 The funnel invariant
+
+Recall is **cheap and wide**; reranking is **precise and narrow**. The three
+result-size knobs on `retrieve` therefore form a funnel and **MUST** satisfy:
+
+```
+candidateK  ≥  rerank.topN  ≥  k
+```
+
+The recall stage produces `candidateK` candidates, the reranker rescores the top
+`rerank.topN` of them, and the server returns the best `k` (§7.7).
+
+### 3.4 Two ways to drive it
+
+- **Server-driven.** A client that only wants "the best hits for this query"
+  calls `retrieve` once and lets the server run transform → recall → fuse →
+  rerank → diversify → cite. One request, one ranked list.
+- **Client-orchestrated.** A client running its own agentic loop calls the
+  stages individually — `query/transform` to plan, `embed` for a client-side
+  index, `rerank` to rescore a candidate set, `graph` to walk relationships.
 
 ---
 
