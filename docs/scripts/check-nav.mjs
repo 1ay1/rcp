@@ -1,9 +1,9 @@
 // check-nav.mjs — verify every page in docs.json resolves to a file, and flag
 // any orphan .mdx pages not referenced in the navigation. Run: node scripts/check-nav.mjs
 import { readFileSync, existsSync } from "node:fs";
-import { globSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listFiles } from "./lib.mjs";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cfg = JSON.parse(readFileSync(path.join(root, "docs.json"), "utf8"));
@@ -31,7 +31,7 @@ for (const p of pages) {
   }
 }
 
-const onDisk = globSync("**/*.mdx", { cwd: root }).map((f) => f.replace(/\.mdx$/, ""));
+const onDisk = listFiles(root, ".mdx").map((f) => f.replace(/\.mdx$/, ""));
 const referenced = new Set(pages);
 const orphans = onDisk.filter((f) => !referenced.has(f));
 

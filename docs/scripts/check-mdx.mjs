@@ -2,12 +2,13 @@
 //   1. balanced block components (<Tag>…</Tag>)
 //   2. stray `<` or `{` in prose (outside code) that MDX would try to parse as JSX
 // Run: node scripts/check-mdx.mjs
-import { readFileSync, globSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listFiles } from "./lib.mjs";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const files = globSync("**/*.mdx", { cwd: root });
+const files = listFiles(root, ".mdx");
 
 const BLOCK = [
   "CardGroup", "Card", "Steps", "Step", "Tabs", "Tab", "AccordionGroup",
