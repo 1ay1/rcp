@@ -30,7 +30,7 @@ inline constexpr std::string_view IndexAdd    = "index/add";
 inline constexpr std::string_view IndexDelete = "index/delete";
 inline constexpr std::string_view Catalog     = "catalog/list";
 inline constexpr std::string_view Cancel      = "notifications/cancel";
-inline constexpr std::string_view Log         = "log";
+inline constexpr std::string_view Log         = "notifications/log";
 inline constexpr std::string_view Ping        = "ping";
 inline constexpr std::string_view Shutdown    = "shutdown";
 } // namespace method

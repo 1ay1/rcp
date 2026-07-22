@@ -22,6 +22,7 @@ Every RCP method is gated by a capability the server advertises during
 | `index/add`, `index/delete` | `index` | mutate the corpus |
 | `catalog/list` | `catalog` | enumerate federated engines |
 | `notifications/cancel` | always | abandon an in-flight request |
+| `notifications/log` | `log` | server-emitted structured diagnostics |
 | `ping` | always | liveness / round-trip; echoes a nonce |
 | `shutdown` | always | graceful close |
 

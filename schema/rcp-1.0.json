@@ -21,7 +21,8 @@
             "dimension": { "type": "integer", "minimum": 1 },
             "identity": { "type": "string" },
             "batchLimit": { "type": "integer", "minimum": 1 },
-            "normalized": { "type": "boolean" }
+            "normalized": { "type": "boolean" },
+            "modalities": { "type": "array", "items": { "enum": ["text", "image", "audio", "code", "multimodal"] } }
           }
         },
         "sparseEmbed": {
@@ -35,14 +36,17 @@
           "type": "object",
           "properties": {
             "dimension": { "type": "integer", "minimum": 1 },
-            "identity": { "type": "string" }
+            "identity": { "type": "string" },
+            "similarity": { "enum": ["dot", "cosine"] },
+            "modalities": { "type": "array", "items": { "enum": ["text", "image", "audio", "code", "multimodal"] } }
           }
         },
         "rerank": {
           "type": "object",
           "properties": {
             "methods": { "type": "array", "items": { "enum": ["cross-encoder", "colbert", "llm"] } },
-            "maxCandidates": { "type": "integer", "minimum": 1 }
+            "maxCandidates": { "type": "integer", "minimum": 1 },
+            "models": { "type": "array", "items": { "type": "string" } }
           }
         },
         "retrieve": {
@@ -135,7 +139,7 @@
       "required": ["level"],
       "properties": {
         "level": { "enum": ["trusted", "community", "untrusted"] },
-        "score": { "type": "number" }
+        "score": { "type": "number", "minimum": 0, "maximum": 1 }
       }
     },
     "Hit": {
@@ -184,8 +188,9 @@
             "value": {}
           }
         },
-        { "required": ["and"], "properties": { "and": { "type": "array", "items": { "$ref": "#/$defs/FilterClause" } } } },
-        { "required": ["or"], "properties": { "or": { "type": "array", "items": { "$ref": "#/$defs/FilterClause" } } } }
+        { "required": ["and"], "properties": { "and": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/FilterClause" } } } },
+        { "required": ["or"], "properties": { "or": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/FilterClause" } } } },
+        { "required": ["not"], "properties": { "not": { "$ref": "#/$defs/FilterClause" } } }
       ]
     },
     "JsonRpcRequest": {
@@ -264,8 +269,9 @@
     },
     "EmbedParams": {
       "type": "object",
-      "required": ["texts"],
+      "anyOf": [ { "required": ["inputs"] }, { "required": ["texts"] } ],
       "properties": {
+        "inputs": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
         "texts": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
         "kind": { "enum": ["query", "document"] }
       }
@@ -483,7 +489,7 @@
       "required": ["jsonrpc", "method", "params"],
       "properties": {
         "jsonrpc": { "const": "2.0" },
-        "method": { "const": "log" },
+        "method": { "const": "notifications/log" },
         "params": {
           "type": "object",
           "required": ["level", "message"],

@@ -2,6 +2,7 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import { rehypeBaseLinks } from "./plugins/rehype-base-links.mjs";
+import { rehypeTableScroll } from "./plugins/rehype-table-scroll.mjs";
 
 // RCP documentation site — Astro + Starlight.
 // This single file drives theme, nav, SEO, and social — the RCP analogue
@@ -11,7 +12,7 @@ export default defineConfig({
   base: "/rcp",
   trailingSlash: "ignore",
   markdown: {
-    rehypePlugins: [rehypeBaseLinks],
+    rehypePlugins: [rehypeBaseLinks, rehypeTableScroll],
   },
   integrations: [
     starlight({

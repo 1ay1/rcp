@@ -191,7 +191,13 @@ prefix. This keeps the core namespace clean and forward-compatible.
 ### 4.5 Notifications
 
 A message with no `id` is a notification and **MUST NOT** be answered. RCP/1
-defines `notifications/progress` (§9) and `notifications/cancel` (§7.14).
+defines three: `notifications/progress` (§9), `notifications/cancel` (§7.14),
+and `notifications/log` (§17.1). The `notifications/` prefix is **reserved** for
+protocol notifications; a future revision may add more, and peers **MUST**
+silently ignore any `notifications/*` method they do not recognise (it has no
+`id`, so there is nothing to answer). Method names are otherwise `<verb>` or
+`<verb>/<sub>` (e.g. `retrieve`, `index/add`); the `x-<vendor>/…` space is for
+extensions (§6.2).
 
 ### 4.6 Data types
 
@@ -215,6 +221,19 @@ normative:
   Producers **SHOULD** omit optional fields rather than send `null`.
 - **Enums** are lower-case strings exactly as written in this document
   (`"cross-encoder"`, `"hybrid"`); comparison is case-sensitive.
+- **Timestamps & dates.** A point in time is either an **RFC 3339 / ISO 8601**
+  string (`"2017-06-12T00:00:00Z"`, UTC **RECOMMENDED**) or an integer count of
+  **milliseconds since the Unix epoch**. A `filter` field that holds a time
+  **SHOULD** be declared with type `"date"` in the advertised `filter.fields`
+  (§8); the server declares which of the two encodings it accepts and **MUST**
+  compare consistently. `recency.field` (§7.7) references such a field.
+- **Scores.** `Hit.score` and `rerank` scores are **server-defined** and only
+  guaranteed **monotonic** (higher = more relevant) *within a single response
+  from one server*. They are **not** normalised to a fixed range and **not**
+  comparable across servers or across calls; `minScore` (§7.7) is interpreted in
+  the server's own scale. Cross-engine merging **MUST** therefore use ranks
+  (RRF, §16.3), not raw scores. A `trust.score` (§7.7) is the exception: it is
+  normalised to `[0,1]`.
 - **Unknown fields** in any object **MUST** be ignored by the receiver, never
   rejected (forward compatibility). This does not apply to `filter` *field
   names*, which are validated against the advertised set (§8).
@@ -260,7 +279,10 @@ indexed document body appears:
 - A **modality** is the coarse kind of content: `"text"`, `"image"`, `"audio"`,
   `"code"`, or `"multimodal"`. A server advertises the modalities it accepts per
   capability (e.g. `embed.modalities`, `retrieve.modalities`); the default,
-  when unadvertised, is `["text"]`.
+  when unadvertised, is `["text"]`. Modality is orthogonal to block `type`: code
+  travels as a `"text"` block tagged with modality `"code"` (there is no
+  `"code"` block type), and `"multimodal"` denotes a query or hit that mixes
+  blocks of several types.
 - **Backward compatibility.** Everywhere this spec accepts a `query` or
   `passages`/`texts` **string**, a server that advertises a non-text modality
   **MUST** also accept a Content block (or array of blocks) in the same field, and
@@ -290,8 +312,8 @@ A message is byte-identical across transports; only framing differs.
   **MUST NOT** assume messages arrive one per `read()`; buffer until `\n`.
 - **stdout is protocol-only.** A server **MUST NOT** write anything but framed
   JSON-RPC to stdout. **stderr** is reserved for human-readable diagnostics and
-  **MUST NOT** carry protocol messages; structured logs travel over `log`
-  notifications (§17), not stderr.
+  **MUST NOT** carry protocol messages; structured logs travel over
+  `notifications/log` (§17), not stderr.
 - EOF on stdin is an implicit `shutdown`: the server **SHOULD** finish in-flight
   requests, flush their responses, and exit.
 
@@ -369,7 +391,7 @@ be `{}`). Absence means unavailable; clients **MUST NOT** use it.
 | `streaming` | `{}` | Server may emit `notifications/progress` and incremental hits. |
 | `pagination` | `{}` | List results support `cursor`/`nextCursor`. |
 | `citations` | `{}` | Hits carry `citation`/`trust` fields. |
-| `log` | `{ levels?:[str] }` | Server emits `log` notifications (§17). |
+| `log` | `{ levels?:[str] }` | Server emits `notifications/log` (§17). |
 | `catalog` | `{ engines:int }` | Server is an **aggregator/gateway**: it federates downstream RCP engines and answers `catalog/list` (see §7.13, §16). |
 
 Each capability's value is an object (possibly `{}`); its **presence** is what
@@ -448,9 +470,27 @@ The first request. No other method except `info` may precede it.
                     "embed": { "dimension": 384, "identity": "bge-small-en" } } }
 ```
 
-**Version negotiation.** Each peer supports `[1 .. maxVersion]`; the negotiated
-version is `min(client.protocolVersion, server.maxVersion)`. If `< 1`, the
-server **MUST** return `-32002`.
+**Version negotiation.** The `protocolVersion` a peer puts on the wire is the
+**highest** version it supports (each peer supports the contiguous range
+`[1 .. protocolVersion]`). The negotiated version is
+`min(client.protocolVersion, server.protocolVersion)` and is what the server
+returns; it governs the connection for its whole lifetime. Because RCP/1 is the
+floor, the result is always `≥ 1` in practice. The server **MUST** return
+`-32002` (`VersionMismatch`) only if it cannot satisfy the floor (it supports no
+version `≥ 1`). Conversely, a client that receives a negotiated version **lower**
+than its own minimum supported version **MUST** abort the connection rather than
+speak a dialect it does not implement.
+
+**Client `capabilities`.** The client's `capabilities` object mirrors the
+server's presence-⇒-supported shape (§6) and declares what the *client* can
+consume. RCP/1 defines none as REQUIRED — a client that omits it, or sends `{}`,
+simply relies on the negotiated defaults — but a client **MAY** advertise
+`streaming` (it is prepared to receive `notifications/progress`) or `log` (it
+will render `notifications/log`). A server **MUST** treat the client's
+capabilities as hints and **MUST NOT** require any client capability to be
+present; it **MUST NOT** emit a notification a client did not opt into via the
+corresponding capability or per-request handle (`_meta.progressToken`,
+`_meta.logLevel`, §17.1). Unknown client capability keys are ignored (§6.2).
 
 ### 7.2 `info` — REQUIRED
 
@@ -458,11 +498,16 @@ Same shape as `initialize.result`, no state change. Callable any time.
 
 ### 7.3 `embed` — gated by `embed`
 
-**Params** `{ "texts": [string], "kind"?: "query"|"document" }`
+**Params** `{ "inputs": [Content|string], "kind"?: "query"|"document" }`
 **Result** `{ "vectors": [[float]] }`
 
-`kind` lets asymmetric encoders (e5/BGE query vs passage prefixes) select the
-right pooling. Requests **SHOULD** respect `embed.batchLimit`.
+`inputs` are Content blocks or bare strings (§4.8); a text-only server accepts
+only strings, while a multimodal (e.g. CLIP-style) server that advertises
+`embed.modalities` also accepts `image`/`audio` blocks and returns one vector per
+input in the same order. `kind` lets asymmetric encoders (e5/BGE query vs
+passage prefixes) select the right pooling. Requests **SHOULD** respect
+`embed.batchLimit`. For backward compatibility a server **MUST** also accept the
+legacy field name `texts` as a synonym for `inputs`.
 
 ### 7.4 `embed/sparse` — gated by `sparseEmbed`
 
@@ -551,7 +596,17 @@ The server **MUST** honour options only within its capabilities and **SHOULD**
 reflect what it actually did in `usage`. If a client requests an unsupported
 `mode`/`method`, the server **MUST** return `-32005` (`OptionUnsupported`) rather
 than silently degrade — unless the client set `"strict": false`, in which case
-the server **MAY** fall back and note it in `usage.notes`.
+the server **MAY** fall back and note it in `usage.notes`. **`strict` defaults to
+`true`** when absent.
+
+**Stage-count invariant.** The three result-size knobs form a funnel and
+**MUST** satisfy `candidateK ≥ rerank.topN ≥ k`: the recall stage produces
+`candidateK` candidates (default server-chosen, e.g. `max(k, 100)`), the reranker
+rescores the top `rerank.topN` of them, and the server returns the best `k`. A
+server **MUST** clamp each value to `retrieve.maxK` / `rerank.maxCandidates` and
+**SHOULD** report the effective counts in `usage` (`candidates`, `reranked`); it
+**MUST NOT** return more than `k` hits (fewer is allowed when the corpus or
+`minScore` yields fewer).
 
 **Hit**
 ```json
@@ -709,6 +764,28 @@ Operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `nin`, `contains`,
 `exists`. Servers **MUST** reject filters referencing unadvertised fields with
 `-32602`.
 
+**Field types & value semantics.** A server **SHOULD** advertise `filter.fields`
+as an object mapping field name → type, where type is one of `"keyword"`
+(exact-match string), `"text"` (tokenised string), `"int"`, `"float"`, `"bool"`,
+`"date"` (§4.6 timestamp), or `"geo"`. The `value` JSON type and the operators
+allowed depend on the field type:
+
+| Operator | `value` shape | Applies to | Meaning |
+|----------|---------------|------------|---------|
+| `eq`, `ne` | scalar (string / number / bool) | any | (in)equality |
+| `gt`, `gte`, `lt`, `lte` | number or `date` | `int`/`float`/`date` | ordered comparison |
+| `in`, `nin` | array of scalars | any | set membership / exclusion |
+| `contains` | scalar | `text` (substring) or array-valued field (element membership) | containment |
+| `exists` | boolean | any | field present (`true`) or absent (`false`) |
+
+A `date` value follows §4.6 (RFC 3339 string or epoch-ms, as the server
+declares). A server **MUST** return `-32602` (with `error.data.field`) if a
+value's JSON type is incompatible with the field type or the operator is not
+allowed for that field, and **MUST** reject an operator outside its advertised
+`filter.operators` with `-32005`. Boolean combinators `and`/`or`/`not` nest
+arbitrarily; an empty `and`/`or` array is `-32602`. Unless a server documents
+otherwise, string comparison is case-sensitive and byte-ordered.
+
 ---
 
 ## 9. Streaming & progress
@@ -727,6 +804,13 @@ When the client attaches `_meta.progressToken` and the server advertised
 The final JSON-RPC response with the request `id` still follows and is
 authoritative.
 
+The `progressToken` is a client-chosen **string or integer**, unique among the
+client's in-flight requests; the server **MUST** echo it verbatim in every
+`notifications/progress` frame for that request and **MUST NOT** emit progress
+for a request that carried none. A client **MUST** function correctly if it
+never receives any progress frame (they are advisory), and **MUST** ignore a
+frame bearing an unknown token.
+
 ## 10. Pagination
 
 When `pagination` is advertised, list-style results (`retrieve`, `graph`
@@ -737,9 +821,25 @@ the client repeats the request with `cursor` set to that value. A missing/empty
 ## 11. Batching
 
 Clients **MAY** send a JSON array of request objects (JSON-RPC batch); the
-server **MUST** reply with an array of the corresponding responses. `embed`,
-`embed/sparse`, `embed/multi`, and `rerank` are inherently batched via their
-array params and **SHOULD** be preferred over JSON-RPC batching for throughput.
+server **MUST** reply with an array containing one response object per
+*request* in the batch, in any order (clients correlate by `id`, §4.7).
+Notifications in the batch (members with no `id`) produce **no** response entry.
+Additional rules, per JSON-RPC 2.0:
+
+- An **empty array** is an invalid request: the server **MUST** reply with a
+  single (non-array) `-32600` error, `id: null`.
+- If the batch contains **only notifications**, the server processes them and
+  returns **nothing** (no HTTP body / no stdio line).
+- A member that is not a well-formed request yields a `-32600` entry with
+  `id: null`; well-formed members are still processed. One member's error never
+  fails the others.
+- Batching composes with capability gating and cancellation exactly as for
+  singleton requests. Servers **MAY** cap batch size and reject an oversized
+  batch with `-32602`.
+
+`embed`, `embed/sparse`, `embed/multi`, and `rerank` are inherently batched via
+their array params and **SHOULD** be preferred over JSON-RPC batching for
+throughput.
 
 ---
 
@@ -867,7 +967,7 @@ A **conforming client** **MUST** send `initialize` first, honour the negotiated
 version, never call an unadvertised method or pass an unadvertised option (unless
 `strict:false`), correlate responses by `id` (§4.7), tolerate unknown
 fields/`_meta`/capability keys, and function correctly if it drops every
-`notifications/progress` and `log` notification.
+`notifications/progress` and `notifications/log` notification.
 
 The JSON Schema in [`/schema`](../schema) is normative for message shapes; the
 [`/conformance`](../conformance) suite validates any server, in any language,
@@ -1068,11 +1168,11 @@ non-intrusive channels; both are optional and never alter retrieval semantics.
 
 ### 17.1 Log notifications
 
-A server that advertises `log` **MAY** emit `log` notifications (no `id`, no
+A server that advertises `log` **MAY** emit `notifications/log` (no `id`, no
 response) at any time:
 
 ```json
-{ "jsonrpc": "2.0", "method": "log",
+{ "jsonrpc": "2.0", "method": "notifications/log",
   "params": { "level": "info", "message": "reranked 100→30",
               "logger"?: "pipeline", "data"?: { "latencyMs": 42 },
               "_meta"?: { "progressToken": "t2" } } }
@@ -1080,10 +1180,12 @@ response) at any time:
 
 - `level` is a syslog-style severity: `"debug"`, `"info"`, `"notice"`,
   `"warning"`, `"error"`. A client **MAY** advertise a minimum level in
-  `initialize.params` (`_meta.logLevel`); servers **SHOULD** honour it.
+  `initialize.params` (`_meta.logLevel`); servers **SHOULD** honour it and
+  **SHOULD** emit logs only when the client advertised the `log` capability
+  (§7.1).
 - Logs are diagnostics only. A client **MUST** function correctly if it drops
-  every `log` notification, and **MUST NOT** parse log text for control flow.
-- Over stdio, logs travel as `log` notifications on stdout — *not* on stderr —
+  every `notifications/log`, and **MUST NOT** parse log text for control flow.
+- Over stdio, logs travel as `notifications/log` on stdout — *not* on stderr —
   so a supervising client sees them in-band and correlated with requests.
 
 ### 17.2 Usage & telemetry
@@ -1189,7 +1291,8 @@ outcome).
 
 | Version | Date | Changes |
 |---------|------|---------|
-| `RCP/1` 1.0 | 2025 | Initial stable release. Core methods (`initialize`, `info`, `embed`, `embed/sparse`, `embed/multi`, `rerank`, `retrieve`, `query/transform`, `graph`, `index/add`, `index/delete`, `catalog/list`, `shutdown`, `notifications/cancel`, `ping`), capability negotiation, stdio + HTTP(+SSE) transports, a Content/modality model for multimodal & visual-document retrieval, metadata filtering, streaming/progress, `log` observability, pagination, batching, structured errors with retryability, determinism (`seed`/`indexVersion`), a full threat model, federation (registry + RRF/weighted fusion), and the type-theoretic C++ SDK with Python bindings. |
+| `RCP/1` 1.0 | 2025 | Initial stable release. Core methods (`initialize`, `info`, `embed`, `embed/sparse`, `embed/multi`, `rerank`, `retrieve`, `query/transform`, `graph`, `index/add`, `index/delete`, `catalog/list`, `shutdown`, `notifications/cancel`, `ping`), capability negotiation, stdio + HTTP(+SSE) transports, a Content/modality model for multimodal & visual-document retrieval, metadata filtering, streaming/progress, `notifications/log` observability, pagination, batching, structured errors with retryability, determinism (`seed`/`indexVersion`), a full threat model, federation (registry + RRF/weighted fusion), and the type-theoretic C++ SDK with Python bindings. |
+| `RCP/1` 1.0 · ed. | 2025 | Clarifications and one notification rename. No changes to any request/response shape. Additions: normative timestamp/date encoding, score-scale & comparability rules, and `trust.score ∈ [0,1]` (§4.6); `filter` field-type × operator value-typing table and empty-combinator handling (§8); client `capabilities` semantics and tightened version-negotiation wording (§7.1); `embed` accepts Content blocks via `inputs`, with `texts` retained as a legacy synonym (§7.3); explicit `strict` default and the `candidateK ≥ rerank.topN ≥ k` funnel invariant (§7.7); `progressToken` typing/uniqueness (§9); JSON-RPC batch edge cases (§11). Rename: the log notification method `log` → `notifications/log`, and the `notifications/*` namespace is now reserved (§4.5, §17.1); the `log` *capability* key is unchanged. |
 
 ## Appendix F — Evaluation & quality
 

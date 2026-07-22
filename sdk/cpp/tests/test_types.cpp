@@ -85,7 +85,7 @@ int main() {
     // log notification helper is well-formed (§17.1).
     auto logline = make_log_notification("info", "reranked 100→30", Json{{"latencyMs", 42}});
     auto logj = Json::parse(logline);
-    CHECK(logj["method"] == "log");
+    CHECK(logj["method"] == "notifications/log");
     CHECK(logj["params"]["level"] == "info");
     CHECK(!logj.contains("id")); // notification, not a request
 

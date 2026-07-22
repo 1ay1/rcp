@@ -195,6 +195,16 @@ starlight-toc a[aria-current="true"] { color: var(--sl-color-accent-high); borde
 .sl-link-card .icon { color: var(--rcp-signal); }
 
 /* ================================================= Markdown content ====== */
+/* Long-form reading comfort (benefits the spec + every guide). */
+.sl-markdown-content { font-size: 1rem; }
+.sl-markdown-content p,
+.sl-markdown-content li { line-height: 1.75; }
+.sl-markdown-content li + li { margin-top: 0.3rem; }
+.sl-markdown-content h3 { margin-top: 2em; font-size: 1.2rem; color: var(--sl-color-white); }
+.sl-markdown-content h4 { margin-top: 1.5em; color: var(--sl-color-white); }
+/* Numbered spec headings ("7.1 …") get a faint monospace tint on the number */
+.sl-markdown-content h2, .sl-markdown-content h3 { scroll-margin-top: 5rem; }
+
 .sl-markdown-content a:not(:where(.not-content *)) {
   color: var(--sl-color-accent-high);
   text-decoration-color: color-mix(in srgb, var(--rcp-signal) 45%, transparent);
@@ -229,13 +239,19 @@ starlight-toc a[aria-current="true"] { color: var(--sl-color-accent-high); borde
   border-bottom: 1px solid color-mix(in srgb, var(--rcp-signal) 15%, transparent);
 }
 
-/* Tables */
-.sl-markdown-content table { border-collapse: separate; border-spacing: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--sl-color-gray-5); }
+/* Tables: comfortable padding, slightly smaller for dense spec tables, wrapped
+   in a horizontal-scroll container (rehype-table-scroll) so they never break
+   the layout. */
+.rcp-table-scroll { overflow-x: auto; margin: 1rem 0; border-radius: 10px; }
+.sl-markdown-content .rcp-table-scroll table { margin: 0; min-width: 100%; width: max-content; max-width: none; }
+.sl-markdown-content table { border-collapse: separate; border-spacing: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--sl-color-gray-5); font-size: 0.92rem; }
+.sl-markdown-content th, .sl-markdown-content td { padding: 0.5rem 0.8rem; }
 .sl-markdown-content th {
   background: color-mix(in srgb, var(--rcp-signal) 11%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--rcp-signal) 30%, transparent);
   font-family: var(--__rcp-head);
   font-weight: 600;
+  text-align: left;
 }
 .sl-markdown-content th, .sl-markdown-content td { border-inline: 0; }
 .sl-markdown-content tr:nth-child(even) td { background: color-mix(in srgb, var(--sl-color-gray-6) 45%, transparent); }

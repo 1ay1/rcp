@@ -52,4 +52,4 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 Both reference example servers pass **10/10**. A conforming *client* must send
 `initialize` first, honour the negotiated version, never call an unadvertised
 method, correlate responses by `id`, and function correctly even if it drops
-every `notifications/progress` and `log` notification.
+every `notifications/progress` and `notifications/log` notification.
