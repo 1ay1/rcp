@@ -60,6 +60,10 @@
             "rerankBuiltin": { "type": "boolean" },
             "deterministic": { "type": "boolean" },
             "snapshots": { "type": "boolean" },
+            "units": { "type": "array", "items": { "enum": ["chunk", "passage", "document", "node", "triplet", "path", "subgraph", "community", "tree-node", "page"] } },
+            "levels": { "type": "integer", "minimum": 1 },
+            "tokenBudget": { "type": "boolean" },
+            "confidence": { "type": "boolean" },
             "defaultMode": { "enum": ["dense", "sparse", "hybrid"] }
           }
         },
@@ -79,6 +83,21 @@
             "writable": { "type": "boolean" },
             "chunking": { "type": "boolean" },
             "contextual": { "type": "boolean" }
+          }
+        },
+        "session": {
+          "type": "object",
+          "properties": {
+            "dedup": { "type": "boolean" },
+            "ttlSeconds": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "feedback": { "type": "object" },
+        "memory": {
+          "type": "object",
+          "properties": {
+            "scopes": { "type": "array", "items": { "enum": ["global", "session"] } },
+            "clues": { "type": "boolean" }
           }
         },
         "filter": {
@@ -139,7 +158,26 @@
       "required": ["level"],
       "properties": {
         "level": { "enum": ["trusted", "community", "untrusted"] },
-        "score": { "type": "number", "minimum": 0, "maximum": 1 }
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "injectionSuspected": { "type": "boolean" },
+        "sanitized": { "type": "boolean" }
+      }
+    },
+    "Provenance": {
+      "description": "Graph/tree lineage behind a hit (spec §7.7.2).",
+      "type": "object",
+      "properties": {
+        "path": { "type": "array", "items": { "type": "string" } },
+        "nodes": { "type": "array", "items": { "type": "string" } },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["src", "dst"],
+            "properties": { "src": { "type": "string" }, "dst": { "type": "string" } }
+          }
+        },
+        "leaves": { "type": "array", "items": { "type": "string" } }
       }
     },
     "Hit": {
@@ -148,9 +186,12 @@
       "properties": {
         "id": { "type": ["string", "number"] },
         "score": { "type": "number" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "text": { "type": "string" },
         "content": { "type": "array", "items": { "$ref": "#/$defs/Content" } },
         "modality": { "enum": ["text", "image", "audio", "code", "multimodal"] },
+        "unit": { "enum": ["chunk", "passage", "document", "node", "triplet", "path", "subgraph", "community", "tree-node", "page"] },
+        "level": { "type": "integer", "minimum": 0 },
         "meta": { "type": "object" },
         "vector": { "type": "array", "items": { "type": "number" } },
         "scores": {
@@ -158,6 +199,7 @@
           "additionalProperties": { "type": "number" }
         },
         "citation": { "$ref": "#/$defs/Citation" },
+        "provenance": { "$ref": "#/$defs/Provenance" },
         "trust": { "$ref": "#/$defs/Trust" },
         "chunk": {
           "type": "object",
@@ -346,6 +388,10 @@
         "filter": { "$ref": "#/$defs/FilterClause" },
         "minScore": { "type": "number" },
         "recency": { "type": "object", "properties": { "field": { "type": "string" }, "halfLifeDays": { "type": "number" } } },
+        "unit": { "enum": ["chunk", "passage", "document", "node", "triplet", "path", "subgraph", "community", "tree-node", "page"] },
+        "level": { "type": "integer", "minimum": 0 },
+        "tokenBudget": { "type": "integer", "minimum": 1 },
+        "sessionId": { "type": "string" },
         "includeText": { "type": "boolean" },
         "includeVectors": { "type": "boolean" },
         "seed": { "type": "integer" },
@@ -391,7 +437,89 @@
         "query": { "type": "string" },
         "k": { "type": "integer", "minimum": 1 },
         "seedIds": { "type": "array", "items": { "type": "string" } },
-        "hops": { "type": "integer", "minimum": 1 }
+        "hops": { "type": "integer", "minimum": 1 },
+        "level": { "type": "integer", "minimum": 0 },
+        "sessionId": { "type": "string" }
+      }
+    },
+    "FeedbackParams": {
+      "type": "object",
+      "required": ["signals"],
+      "properties": {
+        "sessionId": { "type": "string" },
+        "query": { "type": "string" },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["hitId"],
+            "properties": {
+              "hitId": { "type": ["string", "number"] },
+              "used": { "type": "boolean" },
+              "cited": { "type": "boolean" },
+              "helpful": { "type": "boolean" },
+              "reward": { "type": "number", "minimum": -1, "maximum": 1 },
+              "poisonSuspected": { "type": "boolean" },
+              "injectionSuspected": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "FeedbackResult": {
+      "type": "object",
+      "required": ["accepted"],
+      "properties": { "accepted": { "type": "integer", "minimum": 0 } }
+    },
+    "MemoryBuildParams": {
+      "type": "object",
+      "properties": {
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "properties": { "id": { "type": "string" }, "text": { "type": "string" } }
+          }
+        },
+        "memoryId": { "type": "string" },
+        "scope": { "enum": ["global", "session"] }
+      }
+    },
+    "MemoryBuildResult": {
+      "type": "object",
+      "required": ["memoryId"],
+      "properties": {
+        "memoryId": { "type": "string" },
+        "tokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "MemoryRecallParams": {
+      "type": "object",
+      "required": ["query"],
+      "properties": {
+        "query": { "type": "string" },
+        "memoryId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "n": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "MemoryRecallResult": {
+      "type": "object",
+      "required": ["clues"],
+      "properties": {
+        "clues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "query": { "type": "string" },
+              "seedIds": { "type": "array", "items": { "type": "string" } },
+              "weight": { "type": "number" }
+            }
+          }
+        },
+        "hits": { "type": "array", "items": { "$ref": "#/$defs/Hit" } }
       }
     },
     "IndexAddParams": {

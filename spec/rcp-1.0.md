@@ -427,6 +427,9 @@ be `{}`). Absence means unavailable; clients **MUST NOT** use it.
 | `transform` | `{ methods:[str] }` | Query transformation; `methods` ⊆ `["rewrite","hyde","multi-query","decompose","step-back"]`. |
 | `graph` | `{ ops:[str] }` | Graph retrieval; ops ⊆ `["local","global","drift","communities","neighbors"]`. |
 | `index` | `{ writable:bool, chunking?:bool, contextual?:bool }` | Document add/delete; optional server-side chunking / contextual retrieval. |
+| `session` | `{ dedup?:bool, ttlSeconds?:int }` | Trajectory-scoped state for iterative/agentic retrieval via `sessionId` (§7.7.3). |
+| `feedback` | `{}` | Accepts client→server relevance/reward/integrity signals (§7.16). |
+| `memory` | `{ scopes:[str], clues?:bool }` | Global/session memory build + clue recall (MemoRAG, HippoRAG) (§7.17). |
 | `filter` | `{ fields:[str]\|object, operators?:[str] }` | Metadata filtering support and the fields/operators allowed. |
 | `streaming` | `{}` | Server may emit `notifications/progress` and incremental hits. |
 | `pagination` | `{}` | List results support `cursor`/`nextCursor`. |
@@ -447,6 +450,10 @@ field inside a known capability, as informational and ignore it (§6.2).
     "fusion": ["rrf", "weighted"],
     "mmr": true,
     "rerankBuiltin": true,
+    "units": ["chunk", "document", "tree-node", "community"],
+    "levels": 3,
+    "tokenBudget": true,
+    "confidence": true,
     "defaultMode": "hybrid"
 } }
 ```
@@ -456,6 +463,12 @@ field inside a known capability, as informational and ignore it (§6.2).
 - `mmr` — whether MMR diversification can be requested inline.
 - `rerankBuiltin` — whether the server can rerank inside `retrieve` (vs a
   separate `rerank` call).
+- `units` — the retrieval granularities the server can return (§7.7.2); absent
+  means `chunk`/`passage` only.
+- `levels` — the number of abstraction levels in a hierarchical corpus (RAPTOR
+  tree depth, Leiden levels); absent means flat.
+- `tokenBudget` — whether `retrieve.tokenBudget` packing is honoured (§7.7.2).
+- `confidence` — whether hits carry a normalised `[0,1]` `confidence` (§7.7.2).
 
 Servers **MAY** add extension capability keys prefixed `x-<vendor>`; clients
 **MUST** ignore unrecognised keys.
@@ -507,6 +520,9 @@ method roster, and the capability that gates each, at a glance:
 | `index/add` | optional | `index` (`writable`) | Upsert corpus content (§7.10). |
 | `index/delete` | optional | `index` | Delete corpus content (§7.11). |
 | `catalog/list` | optional | `catalog` | Discover federated engines (§7.13). |
+| `feedback` | optional | `feedback` | Client→server relevance/reward/integrity signals (§7.16). |
+| `memory/build` | optional | `memory` | Build/update a global or session memory (§7.17). |
+| `memory/recall` | optional | `memory` | Recall clues/entry-points from a memory (§7.17). |
 | `notifications/cancel` | notification | — | Abandon an in-flight request (§7.14). |
 
 Every `optional` method is callable only when the server advertised its gating
@@ -637,6 +653,10 @@ advertised `retrieve` capability.
   "filter"?: { … },                 // metadata filter, see §8
   "minScore"?: 0.0,
   "recency"?: { "field": "timestamp", "halfLifeDays": 30 },
+  "unit"?: "chunk"|"passage"|"document"|"node"|"triplet"|"path"|"subgraph"|"community"|"tree-node"|"page",  // retrieval granularity (§7.7.2)
+  "level"?: 0,                    // abstraction level for hierarchical corpora (RAPTOR tree depth, Leiden level)
+  "tokenBudget"?: 4000,           // stop packing hits once their bodies reach this many tokens (§7.7.2)
+  "sessionId"?: "opaque",         // correlate iterative retrieves in one agentic trajectory (§7.7.3)
   "includeText"?: true,
   "includeVectors"?: false,
   "seed"?: 12345,                   // determinism hint (§7.7.1)
@@ -676,23 +696,37 @@ server **MUST** clamp each value to `retrieve.maxK` / `rerank.maxCandidates` and
 ```json
 { "id": string | number,
   "score": float,
+  "confidence"?: 0.0,                 // normalised [0,1] relevance/self-eval, comparable across calls (§7.7.2)
   "text"?: string,
   "content"?: [Content],              // non-text or mixed bodies (§4.8), e.g. a page image
   "modality"?: "text"|"image"|"audio"|"code"|"multimodal",
+  "unit"?: "chunk"|"passage"|"document"|"node"|"triplet"|"path"|"subgraph"|"community"|"tree-node"|"page",  // granularity of this hit (§7.7.2)
+  "level"?: 0,                        // abstraction level (tree depth / community level) this hit came from
   "meta"?: object,
   "vector"?: [float],                 // when includeVectors
   "scores"?: { "dense": 0.7, "sparse": 0.3, "rerank": 0.9 },  // per-stage breakdown
   "citation"?: { "source": "…", "uri"?: "…", "title"?: "…", "start"?: int, "end"?: int, "page"?: int },
-  "trust"?: { "level": "trusted"|"community"|"untrusted", "score"?: 0.0 },  // provenance (§15)
+  "provenance"?: { "path"?: [string], "nodes"?: [string], "edges"?: [{"src":string,"dst":string}], "leaves"?: [string] },  // graph/tree lineage (§7.7.2)
+  "trust"?: { "level": "trusted"|"community"|"untrusted", "score"?: 0.0,
+              "injectionSuspected"?: false, "sanitized"?: false },  // provenance + safety signals (§15)
   "chunk"?: { "docId": string, "index": int, "context"?: string } }
 ```
 
 `id` is in the server's identifier space; clients fusing across servers key on
 the stringified `id`. `scores` exposes the per-stage contribution for
-debugging/telemetry (SOTA pipelines want this). `trust` carries **provenance**
-so a downstream LLM (or the client) can weight or quarantine untrusted content
-before it enters a prompt (§15). `content`/`modality` carry non-text bodies for
-visual-document and multimodal retrieval.
+debugging/telemetry (SOTA pipelines want this). `confidence` is an optional
+**normalised `[0,1]`** signal — unlike `score` (server-scaled, §4.6) it is
+comparable across calls, so a corrective/adaptive client can threshold on it
+(CRAG's correct/ambiguous/incorrect buckets, Self-RAG's `IsRel`). `unit`/`level`
+tell a client the **granularity** of what was returned (a chunk, a graph triplet,
+a RAPTOR tree-node, a community summary) so it can pack or re-query at the right
+abstraction. `provenance` carries the graph/tree lineage behind a hit — the
+entity `path`, the `nodes`/`edges` traversed (GraphRAG, HippoRAG), or the
+`leaves` a summary covers (RAPTOR) — for auditable, path-level citation. `trust`
+carries **provenance** and optional **safety signals** (`injectionSuspected`,
+`sanitized`) so a downstream LLM (or the client) can weight or quarantine
+untrusted content before it enters a prompt (§15). `content`/`modality` carry
+non-text bodies for visual-document and multimodal retrieval.
 
 #### 7.7.1 Determinism & reproducibility
 
@@ -713,6 +747,65 @@ repeatability. RCP provides two optional handles:
 
 A server advertises support via `retrieve.deterministic: true` and/or
 `retrieve.snapshots: true`.
+
+#### 7.7.2 Granularity, token budget & confidence
+
+Modern RAG retrieves at **many granularities** and against a fixed *token* budget
+rather than a fixed *count*. Three optional handles express this; all are gated
+by `retrieve` capability metadata (§6.1) and safely ignorable.
+
+- **`unit`** selects the granularity of what is returned: a `chunk`/`passage`
+  (classic), a whole `document` (LongRAG's long retrieval units), a graph `node`,
+  `triplet`, `path`, or `subgraph` (GraphRAG granularities), a `community`
+  summary, a `tree-node` (RAPTOR's recursive summary tree), or a rendered `page`
+  (visual-document retrieval). A server advertises the units it can return in
+  `retrieve.units`; each `Hit` echoes its own `unit`. Requesting an unadvertised
+  unit follows the usual `strict` rule (§7.7).
+- **`level`** picks the abstraction level in a hierarchical corpus — a RAPTOR
+  tree depth or a Leiden community level. `level:0` is the leaf/most-specific
+  layer; higher levels are more summarised. A hit echoes the `level` it came
+  from, letting a client retrieve coarse first and drill down (or vice versa).
+- **`tokenBudget`** replaces "give me `k` hits" with "give me as many hits as fit
+  in `N` tokens." When set, the server packs top-ranked hits until their bodies
+  reach the budget and **SHOULD** report the packed total in
+  `usage.tokens`. This directly serves long-context readers and the
+  chunk-explosion problem: the client caps context size, the server maximises
+  relevance within it. `k` and `tokenBudget` **MAY** both be set (whichever binds
+  first wins); a server that does not support budgeting ignores it (per
+  `strict`).
+
+Separately, each `Hit` **MAY** carry a **`confidence` ∈ `[0,1]`** — a normalised,
+cross-call-comparable relevance or self-evaluation signal, distinct from the
+server-scaled `score` (§4.6). This is the primitive corrective and adaptive
+systems threshold on: CRAG's {correct, ambiguous, incorrect} evaluator buckets,
+Self-RAG's `IsRel`/`IsSup` reflection, and confidence-triggered active retrieval
+(FLARE). A server advertises it with `retrieve.confidence: true`; absent the
+flag, clients **MUST NOT** assume `score` is normalised and **SHOULD** derive
+their own threshold from the returned distribution.
+
+#### 7.7.3 Agentic sessions & iterative retrieval
+
+Agentic RAG (Self-RAG, DRIFT, DeepRAG, Adaptive-RAG, Search-R1) issues **many
+retrieves in one reasoning trajectory**, each conditioned on what the earlier
+ones returned. RCP keeps the core `retrieve` stateless but lets a client thread a
+trajectory with an optional **`sessionId`**: an opaque, client-chosen token
+carried on every `retrieve`/`graph`/`feedback` (§7.16) call that belongs to the
+same reasoning episode. A server that advertises `session` **MAY** use it to
+
+- **deduplicate** hits already returned earlier in the trajectory (so a
+  multi-hop loop keeps finding *new* evidence), and
+- **cache** trajectory-scoped state (expanded graph frontier, a MemoRAG memory
+  handle, a rewritten-query plan) keyed by `sessionId`.
+
+The `sessionId` is a **hint, never a requirement**: a server that ignores it
+**MUST** still answer correctly (just without cross-call state), and a client
+**MUST** function if the server does not honour it. `graph op:"drift"` already
+returns `followups`; combined with `sessionId` a client can run the canonical
+agentic loop — *think → retrieve → observe → retrieve again → verify* — entirely
+over standard methods, with the server free to make each step cheaper. A server
+advertises this with `session: { dedup?: bool, ttlSeconds?: int }`; the client
+keeps the loop, the retrieval planning, and the stop decision (RCP does not
+prescribe an agent policy, only the state handle that makes one efficient).
 
 ### 7.8 `query/transform` — gated by `transform`
 
@@ -808,6 +901,72 @@ never changes state.
 The server **MUST** echo any `nonce` it received. Clients use `ping` for
 keep-alive on long-lived connections and to measure round-trip latency; a
 Selector (§16) uses it for the liveness probe behind primary→secondary fallback.
+
+### 7.16 `feedback` — gated by `feedback`
+
+The one channel that flows **client → server**: a signal about how earlier hits
+fared downstream. RL-trained retrievers (Search-R1, DeepRetrieval) learn from a
+downstream reward; corrective loops mark a hit as used or unhelpful; security
+tooling flags a hit as suspected poisoning. `feedback` carries all three without
+mandating what the server does with them (log, online-update, quarantine —
+server's choice). It is a **notification-style, side-effect-only** call that
+**MUST NOT** alter the result of any concurrent `retrieve`.
+
+**Params**
+```json
+{ "sessionId"?: "opaque",          // ties feedback to a trajectory (§7.7.3)
+  "query"?: "…",                   // the query the hits answered
+  "signals": [
+    { "hitId": "arxiv:1706.03762#3",
+      "used"?: true,               // hit was placed in the final context
+      "cited"?: true,              // hit was cited in the answer
+      "helpful"?: true,           // human/judge relevance label
+      "reward"?: 0.8,              // scalar reward ∈ [-1,1] for RL retrievers
+      "poisonSuspected"?: false,   // integrity signal (§15.3)
+      "injectionSuspected"?: false // safety signal (§15.2)
+    } ] }
+```
+**Result** `{ "accepted": int }` — how many signals the server recorded.
+
+A server **MAY** ignore any field it does not act on (still counting it in
+`accepted`) and **MUST** treat every signal as untrusted, advisory input — never
+as a control instruction (§15.2). Feedback is entirely optional; a client that
+never sends it and a server that only logs it are both fully conforming.
+
+### 7.17 `memory/build` and `memory/recall` — gated by `memory`
+
+Memory-augmented RAG (MemoRAG, HippoRAG, long-term agent memory) builds a compact
+**global memory** over a corpus, then, at query time, generates *clues* /
+entry-points that steer retrieval — a two-phase surface neither `retrieve` nor
+`index/add` captures. `memory` makes it explicit while staying optional.
+
+**`memory/build`** — construct or update a memory over documents already indexed
+(or supplied inline). **Params**
+```json
+{ "documents"?: [ { "id"?: string, "text": string } ],  // else build over the live index
+  "memoryId"?: "opaque",          // update an existing memory; omit to create
+  "scope"?: "global"|"session" }  // corpus-wide vs. trajectory-scoped
+```
+**Result** `{ "memoryId": "opaque", "tokens"?: int }`
+
+**`memory/recall`** — given a query and a memory, return **clues** (surrogate
+sub-queries / entry-point keys / seed node ids) the client then feeds back into
+`retrieve`/`graph`, plus optional draft `hits`. **Params**
+```json
+{ "query": "…", "memoryId"?: "opaque", "sessionId"?: "opaque", "n"?: 5 }
+```
+**Result**
+```json
+{ "clues": [ { "query"?: "…", "seedIds"?: [string], "weight"?: 0.9 } ],
+  "hits"?: [ Hit ] }
+```
+
+`clues` are the protocol-visible output of the memory's "generate surrogate
+queries / recall entry points" step; a client fans them out over `retrieve`
+(often with `sessionId`, §7.7.3) or seeds a `graph` traversal (HippoRAG's
+personalized-PageRank entry nodes). A server advertises `memory: { scopes:[str],
+clues?: bool }`. Memory is a heavyweight optional capability — simple servers
+omit it entirely and lose nothing else.
 
 ---
 
@@ -1069,6 +1228,9 @@ designed so a careful client can:
 
 - Servers **SHOULD** populate `Hit.trust` with real provenance and **MUST NOT**
   label user-generated or web-scraped content `"trusted"`.
+- A server that runs its own injection screen **MAY** set `trust.injectionSuspected`
+  or `trust.sanitized` on a hit (§7.7); these are advisory hints, and a client
+  **MUST NOT** treat their *absence* as proof a hit is safe.
 - Clients **SHOULD** keep retrieved content in a *data* channel distinct from
   the instruction channel of any prompt they build, delimit it unambiguously,
   and **SHOULD** down-weight or quarantine `trust.level:"untrusted"` hits.
@@ -1083,7 +1245,11 @@ plant documents crafted to rank highly for a target query and then inject or
 mislead. Mitigations: servers **SHOULD** authenticate and authorise `index/add`
 / `index/delete` independently of read access; **SHOULD** record provenance so
 tainted sources can be revoked; and **MAY** expose `indexVersion` (§7.7.1) so a
-client can pin a vetted snapshot and audit what changed.
+client can pin a vetted snapshot and audit what changed. When a client (or a
+downstream judge) detects likely poisoning, it **SHOULD** report it back via
+`feedback` (`poisonSuspected`, §7.16) so the server can quarantine or re-score the
+source; a server **MUST** treat that signal as advisory, never as authorisation
+to act on the reporter's behalf against other tenants.
 
 ### 15.4 Injection into the backing query engine
 
@@ -1285,15 +1451,29 @@ correlation ids belong in `_meta` (e.g. `_meta.traceId`), never in a core field.
 | MMR diversification | `retrieve.mmr` |
 | Query rewrite / HyDE / multi-query | `query/transform` or `retrieve.rewrite` |
 | Step-back prompting | `query/transform method:"step-back"` |
-| Multi-hop / agentic | client loop over `query/transform` + `retrieve` + `graph:"drift"` |
+| Multi-hop / agentic | client loop over `query/transform` + `retrieve` + `graph:"drift"`, threaded by `sessionId` (§7.7.3) |
+| Self-RAG (reflection / retrieve-on-demand) | client gates `retrieve`; `Hit.confidence` for `IsRel`/`IsSup` thresholds (§7.7.2) |
+| Corrective RAG / CRAG (evaluator buckets, web fallback) | `Hit.confidence` for correct/ambiguous/incorrect; Selector/Federation (§16) for web-search fallback engine |
+| Adaptive-RAG (complexity routing) | client routes: no-retrieve vs single `retrieve` vs multi-step loop over `sessionId` |
+| FLARE (confidence-triggered active retrieval) | client re-issues `retrieve` on low `Hit.confidence` (§7.7.2) |
+| DeepRAG / Search-R1 / DeepRetrieval (RL retrieval) | `feedback` with `reward`/`used`/`cited` (§7.16) closes the policy loop |
 | GraphRAG local/global | `graph op:"local"\|"global"` |
+| GraphRAG DRIFT / iterative traversal | `graph op:"drift"` `followups` + `sessionId` state (§7.7.3) |
+| Graph granularities (node/triplet/path/subgraph/community) | `retrieve unit:…` + `Hit.provenance` path/nodes/edges (§7.7.2) |
+| HippoRAG (PPR over KG, entry-point recall) | `memory/recall` clues → `graph seedIds`; `Hit.provenance.nodes` (§7.17) |
+| MemoRAG (global memory → clues) | `memory/build` + `memory/recall` (§7.17) |
+| RAPTOR (recursive summary tree) | `retrieve unit:"tree-node", level:N`; `Hit.provenance.leaves` (§7.7.2) |
+| LongRAG (long retrieval units, long-context reader) | `retrieve unit:"document"` + `tokenBudget` packing (§7.7.2) |
+| Lost-in-the-middle / chunk-explosion | `retrieve tokenBudget` + rerank funnel (§7.7, §7.7.2) |
 | Contextual retrieval (Anthropic) | `index/add contextual:true` |
-| Citations / attribution | `citations` capability, `Hit.citation` |
+| Citations / attribution | `citations` capability, `Hit.citation`, `Hit.provenance` |
 | Provenance / trust weighting | `Hit.trust` (§15.2) |
+| Injection / poisoning defense (SafeRAG, PoisonedRAG) | `trust.injectionSuspected`/`sanitized`; `feedback poisonSuspected` (§15.2–15.3, §7.16) |
+| RAGAS / ARES eval (rank-sensitive) | stable `Hit.id` + rank order + `Hit.confidence`/`scores`; §7.7.1 determinism (Appendix F) |
 | Freshness / recency bias | `retrieve.recency` |
 | Metadata filtering | `filter` capability, `retrieve.filter` |
 | Reproducible eval / regression tests | `retrieve.seed`, `retrieve.indexVersion` (§7.7.1), Appendix F |
-| Multi-backend fan-out + fusion | Federation (§16), RRF / weighted (§16.3) |
+| Multi-backend fan-out + fusion / Federated RAG | Federation (§16), RRF / weighted (§16.3) |
 
 ## Appendix C — Relationship to MCP and ACP
 
@@ -1357,6 +1537,7 @@ outcome).
 |---------|------|---------|
 | `RCP/1` 1.0 | 2026 | Initial stable release. Core methods (`initialize`, `info`, `embed`, `embed/sparse`, `embed/multi`, `rerank`, `retrieve`, `query/transform`, `graph`, `index/add`, `index/delete`, `catalog/list`, `shutdown`, `notifications/cancel`, `ping`), capability negotiation, stdio + HTTP(+SSE) transports, a Content/modality model for multimodal & visual-document retrieval, metadata filtering, streaming/progress, `notifications/log` observability, pagination, batching, structured errors with retryability, determinism (`seed`/`indexVersion`), a full threat model, federation (registry + RRF/weighted fusion), and native C++, Python, Node.js, and Rust SDKs. |
 | `RCP/1` 1.0 · ed. | 2026 | Clarifications and one notification rename. No changes to any request/response shape. Additions: normative timestamp/date encoding, score-scale & comparability rules, and `trust.score ∈ [0,1]` (§4.6); `filter` field-type × operator value-typing table and empty-combinator handling (§8); client `capabilities` semantics and tightened version-negotiation wording (§7.1); `embed` accepts Content blocks via `inputs`, with `texts` retained as a legacy synonym (§7.3); explicit `strict` default and the `candidateK ≥ rerank.topN ≥ k` funnel invariant (§7.7); `progressToken` typing/uniqueness (§9); JSON-RPC batch edge cases (§11). Rename: the log notification method `log` → `notifications/log`, and the `notifications/*` namespace is now reserved (§4.5, §17.1); the `log` *capability* key is unchanged. |
+| `RCP/1` 1.0 · SOTA | 2026 | Additive, fully backward-compatible coverage of 2024–2026 RAG frontiers, all gated behind new optional capabilities (absent ⇒ pre-existing behaviour). New optional `Hit` fields: `confidence` (normalised [0,1] for corrective/adaptive/Self-RAG thresholds), `unit`/`level` (retrieval granularity & abstraction level), `provenance` (graph/tree lineage: path, nodes, edges, leaves), and `trust.injectionSuspected`/`sanitized` safety signals (§7.7.2, §15.2). New optional `retrieve` params: `unit`, `level`, `tokenBudget` (long-context / chunk-explosion packing), `sessionId` (agentic trajectories) — with `retrieve.units`/`levels`/`tokenBudget`/`confidence` metadata (§6.1, §7.7.2–§7.7.3). New optional capabilities `session`, `feedback`, `memory`. New optional methods `feedback` (RL/corrective/integrity signals, client→server) and `memory/build`+`memory/recall` (MemoRAG/HippoRAG global memory → clues) (§7.16–§7.17). Appendix B extended to map Self-RAG, CRAG, Adaptive-RAG, FLARE, DeepRAG/Search-R1, DRIFT, graph granularities, HippoRAG, MemoRAG, RAPTOR, LongRAG, SafeRAG/PoisonedRAG defenses, and RAGAS/ARES eval onto RCP surfaces. No wire break; no change to any pre-existing field. |
 
 ## Appendix F — Evaluation & quality
 
@@ -1391,6 +1572,11 @@ speaks RCP can be dropped into the same harness without change.
 | **MMR** | Maximal Marginal Relevance — re-ranks for relevance–diversity trade-off. |
 | **HyDE** | Hypothetical Document Embeddings — embed an LLM-generated pseudo-answer as the query. |
 | **GraphRAG** | Retrieval over a knowledge graph / community summaries (local, global, drift). |
+| **Agentic RAG** | A client-driven reasoning loop that interleaves transform/retrieve/graph steps, optionally threaded by `sessionId` (§7.7.3). |
+| **Confidence** | A normalised `[0,1]` per-hit relevance/self-eval signal, comparable across calls, that corrective/adaptive systems threshold on (§7.7.2). |
+| **Retrieval unit / level** | The granularity (chunk…subgraph…page) and abstraction level (RAPTOR tree depth, Leiden level) of a hit (§7.7.2). |
+| **Memory (RCP)** | A compact global/session structure built over a corpus that yields *clues*/entry-points to steer retrieval (MemoRAG, HippoRAG) (§7.17). |
+| **Feedback** | A client→server signal (used/cited/reward/poisonSuspected) that RL-trained or corrective retrievers consume (§7.16). |
 | **Contextual retrieval** | Prepending chunk-situating context before embedding/indexing (Anthropic). |
 | **Recall stage / rerank stage** | Cheap high-recall candidate generation, then expensive precise reranking. |
 | **Aggregator** | A server that federates downstream engines and advertises `catalog`. |

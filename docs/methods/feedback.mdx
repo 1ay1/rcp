@@ -1,0 +1,86 @@
+---
+title: Feedback
+description: The one client→server channel — relevance, reward, and integrity signals that RL-trained and corrective retrievers consume.
+icon: comment-dots
+---
+
+`feedback` is gated by **`feedback`**. Every other method flows a request from
+client to server and an answer back; `feedback` is the reverse — it tells the
+server how earlier hits *fared downstream* so an RL-trained retriever
+(Search-R1, DeepRetrieval) can learn, a corrective loop can mark a hit
+used/unhelpful, and security tooling can flag suspected poisoning.
+
+It is **side-effect-only**: a `feedback` call **MUST NOT** change the result of
+any concurrent `retrieve`. What the server does with the signal — log, online
+update, quarantine — is its choice.
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 1, "method": "feedback",
+  "params": {
+    "sessionId": "traj-42",
+    "query": "who invented the transformer?",
+    "signals": [
+      { "hitId": "arxiv:1706.03762#3", "used": true, "cited": true, "reward": 0.8 },
+      { "hitId": "blog:spam#1", "poisonSuspected": true }
+    ]
+  }
+}
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 1, "result": { "accepted": 2 } }
+```
+</CodeGroup>
+
+## Params
+
+<ParamField path="signals" type="array" required>
+  One or more per-hit signal objects.
+</ParamField>
+<ParamField path="sessionId" type="string">
+  Ties the feedback to an [agentic trajectory](/concepts/agentic-rag).
+</ParamField>
+<ParamField path="query" type="string">
+  The query the hits answered (helps the server attribute the signal).
+</ParamField>
+
+### Signal object
+
+<ParamField path="hitId" type="string | number" required>
+  The `id` of the hit the signal is about.
+</ParamField>
+<ParamField path="used" type="boolean">
+  The hit was placed in the final context.
+</ParamField>
+<ParamField path="cited" type="boolean">
+  The hit was cited in the generated answer.
+</ParamField>
+<ParamField path="helpful" type="boolean">
+  A human/judge relevance label.
+</ParamField>
+<ParamField path="reward" type="number">
+  A scalar reward in `[-1, 1]` for RL-trained retrievers.
+</ParamField>
+<ParamField path="poisonSuspected" type="boolean">
+  Integrity signal — the hit is suspected corpus poisoning.
+</ParamField>
+<ParamField path="injectionSuspected" type="boolean">
+  Safety signal — the hit is suspected to carry an indirect prompt injection.
+</ParamField>
+
+## Result
+
+`{ "accepted": <int> }` — how many signals the server recorded. A server **MAY**
+ignore any field it does not act on (still counting it) and **MUST** treat every
+signal as **untrusted, advisory input** — never as a control instruction, and
+never as authorisation to act against other tenants.
+
+<Info>
+Feedback closes the loop for reinforcement-learning retrieval (reward → policy
+update) and corrective RAG (used/helpful → re-rank or re-index), and gives
+security tooling a path to report poisoning so the server can quarantine a
+source. It is entirely optional: a client that never sends it and a server that
+only logs it are both fully conforming.
+</Info>

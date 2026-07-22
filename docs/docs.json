@@ -68,6 +68,7 @@
               "concepts/initialization",
               "concepts/errors",
               "concepts/lifecycle",
+              "concepts/agentic-rag",
               "concepts/extensibility"
             ]
           },
@@ -81,6 +82,8 @@
               "methods/retrieve",
               "methods/query-transform",
               "methods/graph",
+              "methods/memory",
+              "methods/feedback",
               "methods/index",
               "methods/catalog"
             ]

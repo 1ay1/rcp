@@ -18,6 +18,8 @@ advertised. Clients check `supports(...)` before calling — failures surface
 | [`retrieve`](/methods/retrieve) | `retrieve` | The workhorse — mode, filter, rerank, MMR, recency, citations. |
 | [`query/transform`](/methods/query-transform) | `transform` | Expansion / HyDE / decomposition. |
 | [`graph`](/methods/graph) | `graph` | GraphRAG local / global / drift. |
+| [`memory/build`, `memory/recall`](/methods/memory) | `memory` | Global/session memory → clues (MemoRAG, HippoRAG). |
+| [`feedback`](/methods/feedback) | `feedback` | Client→server relevance / reward / integrity signals. |
 | [`index/add`, `index/delete`](/methods/index) | `index` | Mutate the corpus. |
 | [`catalog/list`](/methods/catalog) | `catalog` | Enumerate federated engines. |
 | [`notifications/cancel`](/concepts/lifecycle) | always | Abandon an in-flight request. |

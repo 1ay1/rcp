@@ -7,6 +7,29 @@ icon: clock-rotate-left
 RCP/1 is **stable**. Changes within the major version are additive and
 capability-discovered; the wire never breaks under you.
 
+<Update label="RCP/1 1.0 · SOTA" description="2026 — agentic & frontier RAG coverage">
+  Additive, fully backward-compatible coverage of 2024–2026 RAG frontiers — all
+  gated behind **new optional capabilities** (absent ⇒ pre-existing behaviour,
+  no wire break).
+
+  - **New optional `Hit` fields:** `confidence` (normalised `[0,1]` for
+    corrective/adaptive/Self-RAG thresholds), `unit`/`level` (retrieval
+    granularity & abstraction level), `provenance` (graph/tree lineage), and
+    `trust.injectionSuspected`/`sanitized` safety signals (§7.7.2, §15.2).
+  - **New optional `retrieve` params:** `unit`, `level`, `tokenBudget`
+    (long-context / chunk-explosion packing), `sessionId` (agentic
+    trajectories), plus `retrieve.units`/`levels`/`tokenBudget`/`confidence`
+    metadata (§6.1, §7.7.2–§7.7.3).
+  - **New optional capabilities:** `session`, `feedback`, `memory`.
+  - **New optional methods:** [`feedback`](/methods/feedback) (RL / corrective /
+    integrity signals, client→server) and [`memory/build` + `memory/recall`](/methods/memory)
+    (MemoRAG / HippoRAG global memory → clues).
+  - Appendix B maps Self-RAG, CRAG, Adaptive-RAG, FLARE, DeepRAG/Search-R1,
+    DRIFT, graph granularities, HippoRAG, MemoRAG, RAPTOR, LongRAG,
+    SafeRAG/PoisonedRAG defenses, and RAGAS/ARES eval onto RCP surfaces. See
+    [Agentic & self-improving RAG](/concepts/agentic-rag).
+</Update>
+
 <Update label="RCP/1 1.0 · ed." description="2026 — editorial revision">
   Clarifications and one notification rename. **No changes to any
   request/response shape.**

@@ -1,0 +1,88 @@
+---
+title: Memory
+description: Build a compact global or session memory over a corpus, then recall clues and entry-points that steer retrieval — MemoRAG and HippoRAG.
+icon: brain
+---
+
+`memory/build` and `memory/recall` are gated by **`memory`**. Memory-augmented
+RAG (MemoRAG, HippoRAG, long-term agent memory) builds a compact **global
+memory** over a corpus, then at query time generates *clues* — surrogate
+sub-queries or graph entry-points — that steer the actual retrieval. That
+two-phase shape fits neither `retrieve` nor `index/add`, so `memory` makes it
+explicit while staying fully optional.
+
+## memory/build
+
+Construct or update a memory over documents already indexed (or supplied
+inline).
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 1, "method": "memory/build",
+  "params": { "scope": "global" }
+}
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 1, "result": { "memoryId": "mem-7", "tokens": 18240 } }
+```
+</CodeGroup>
+
+<ParamField path="documents" type="array">
+  `[{ id?, text }]` to build over; omit to build over the live index.
+</ParamField>
+<ParamField path="memoryId" type="string">
+  Update an existing memory; omit to create a new one.
+</ParamField>
+<ParamField path="scope" type='"global" | "session"'>
+  Corpus-wide vs. trajectory-scoped memory.
+</ParamField>
+
+## memory/recall
+
+Given a query and a memory, return **clues** the client then feeds into
+`retrieve` / `graph`, plus optional draft `hits`.
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 2, "method": "memory/recall",
+  "params": { "query": "how did the merger affect R&D spend?", "memoryId": "mem-7", "n": 5 }
+}
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 2, "result": {
+    "clues": [
+      { "query": "R&D expenditure 2021 vs 2023", "weight": 0.9 },
+      { "seedIds": ["e:acme", "e:merger"], "weight": 0.7 }
+    ] } }
+```
+</CodeGroup>
+
+<ParamField path="query" type="string" required>
+  The user query to recall entry-points for.
+</ParamField>
+<ParamField path="memoryId" type="string">
+  Which memory to recall against.
+</ParamField>
+<ParamField path="sessionId" type="string">
+  Ties recall to an [agentic trajectory](/concepts/agentic-rag).
+</ParamField>
+<ParamField path="n" type="integer">
+  Maximum number of clues to return.
+</ParamField>
+
+### Clue object
+
+Each clue carries a surrogate `query`, a set of `seedIds` (graph entry nodes —
+HippoRAG's personalized-PageRank seeds), or both, plus an optional `weight`. A
+client fans clues out over [`retrieve`](/methods/retrieve) (usually with a
+`sessionId`) or seeds a [`graph`](/methods/graph) traversal.
+
+<Info>
+Memory is a heavyweight optional capability advertised as
+`memory: { scopes: [...], clues: true }`. Simple servers omit it entirely and
+lose nothing else — the rest of the protocol works unchanged.
+</Info>

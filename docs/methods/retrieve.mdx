@@ -108,6 +108,26 @@ sequenceDiagram
 <ParamField path="recency" type="object">
   `{ field, halfLifeDays }` — exponential recency weighting.
 </ParamField>
+<ParamField path="unit" type='"chunk" | "document" | "node" | "triplet" | "path" | "subgraph" | "community" | "tree-node" | "page"'>
+  The [retrieval granularity](/concepts/agentic-rag) to return — a chunk
+  (classic), a whole document (LongRAG), a graph node/triplet/path/subgraph
+  (GraphRAG), a community summary, a RAPTOR tree-node, or a rendered page. Must
+  be in `retrieve.units`.
+</ParamField>
+<ParamField path="level" type="integer">
+  Abstraction level in a hierarchical corpus — RAPTOR tree depth or Leiden
+  level. `0` is the leaf/most-specific layer.
+</ParamField>
+<ParamField path="tokenBudget" type="integer">
+  Pack top hits until their bodies reach this many tokens instead of a fixed
+  `k` — long-context readers and the chunk-explosion problem. Needs
+  `retrieve.tokenBudget`.
+</ParamField>
+<ParamField path="sessionId" type="string">
+  Opaque token threading this call into an [agentic trajectory](/concepts/agentic-rag)
+  so the server can dedup already-seen hits and cache trajectory state. Needs
+  `session`.
+</ParamField>
 <ParamField path="includeText" type="boolean" default="true">
   Include the hit body text.
 </ParamField>
@@ -152,24 +172,37 @@ sequenceDiagram
 {
   "id": "arxiv:1706.03762#3",
   "score": 0.94,
+  "confidence": 0.88,
   "text": "Attention is all you need …",
   "content": [{ "type": "image", "mimeType": "image/png", "uri": "…/page-3.png" }],
   "modality": "text",
+  "unit": "chunk",
+  "level": 0,
   "meta": { "year": 2017 },
   "vector": [0.01, -0.03],
   "scores": { "dense": 0.7, "sparse": 0.3, "rerank": 0.94 },
   "citation": { "source": "…", "uri": "…", "title": "…", "page": 3 },
-  "trust": { "level": "trusted", "score": 0.98 },
+  "provenance": { "path": ["e:turing", "e:vonneumann"], "leaves": ["doc:42#1"] },
+  "trust": { "level": "trusted", "score": 0.98, "injectionSuspected": false },
   "chunk": { "docId": "arxiv:1706.03762", "index": 3, "context": "…" }
 }
 ```
 
 - **`id`** is in the server's identifier space; cross-engine fusion keys on the
   stringified `id`.
+- **`confidence`** is a normalised `[0,1]` relevance/self-eval signal — unlike
+  `score` it is comparable across calls, so [corrective and adaptive](/concepts/agentic-rag)
+  clients threshold on it (CRAG buckets, Self-RAG `IsRel`). Needs
+  `retrieve.confidence`.
+- **`unit`/`level`** tell the client the granularity and abstraction level of
+  the hit so it can pack or re-query at the right level.
 - **`scores`** exposes the per-stage contribution (dense/sparse/rerank) for
   debugging and telemetry.
-- **`trust`** carries [provenance](/operating/security) so a downstream LLM can
-  weight or quarantine untrusted content before it enters a prompt.
+- **`provenance`** carries graph/tree lineage (path · nodes · edges · leaves)
+  for auditable, path-level citation (GraphRAG, HippoRAG, RAPTOR).
+- **`trust`** carries [provenance and safety signals](/operating/security)
+  (`injectionSuspected`, `sanitized`) so a downstream LLM can weight or
+  quarantine untrusted content before it enters a prompt.
 - **`content`/`modality`** carry non-text bodies for visual-document and
   multimodal retrieval.
 

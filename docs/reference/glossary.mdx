@@ -18,6 +18,11 @@ terms that recur across the docs.
 | **MMR** | Maximal Marginal Relevance — re-ranks for the relevance–diversity trade-off. |
 | **HyDE** | Hypothetical Document Embeddings — embed an LLM-generated pseudo-answer as the query. See [Query Transform](/methods/query-transform). |
 | **GraphRAG** | Retrieval over a knowledge graph / community summaries (local, global, drift). See [Graph](/methods/graph). |
+| **Agentic RAG** | A client-driven reasoning loop that interleaves transform/retrieve/graph steps, optionally threaded by `sessionId`. See [Agentic RAG](/concepts/agentic-rag). |
+| **Confidence** | A normalised `[0,1]` per-hit relevance/self-eval signal, comparable across calls, that corrective/adaptive systems threshold on. |
+| **Retrieval unit / level** | The granularity (chunk…subgraph…page) and abstraction level (RAPTOR depth, Leiden level) of a hit. |
+| **Memory (RCP)** | A compact global/session structure over a corpus that yields *clues*/entry-points to steer retrieval (MemoRAG, HippoRAG). See [Memory](/methods/memory). |
+| **Feedback** | A client→server signal (used/cited/reward/poisonSuspected) RL-trained or corrective retrievers consume. See [Feedback](/methods/feedback). |
 | **Contextual retrieval** | Prepending chunk-situating context before embedding/indexing (Anthropic). |
 | **Recall stage / rerank stage** | Cheap high-recall candidate generation, then expensive precise reranking. See [the pipeline](/concepts/pipeline). |
 | **MaxSim** | The late-interaction scoring function: sum over query vectors of the max similarity to any document vector. |

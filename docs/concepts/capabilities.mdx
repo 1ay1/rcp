@@ -37,6 +37,9 @@ support `graph`, `index`, or anything else — those keys are simply absent.
 | `transform` | `{ methods }` | Query transform; `rewrite`, `hyde`, `multi-query`, `decompose`, `step-back`. |
 | `graph` | `{ ops }` | Graph retrieval; `local`, `global`, `drift`, `communities`, `neighbors`. |
 | `index` | `{ writable, chunking?, contextual? }` | Document add/delete; optional server-side chunking. |
+| `session` | `{ dedup?, ttlSeconds? }` | Trajectory-scoped state for [agentic retrieval](/concepts/agentic-rag) via `sessionId`. |
+| `feedback` | `{}` | Accepts client→server relevance/reward/integrity signals. |
+| `memory` | `{ scopes, clues? }` | Global/session memory build + clue recall (MemoRAG, HippoRAG). |
 | `filter` | `{ fields, operators? }` | Metadata filtering and the allowed fields/operators. |
 | `streaming` | `{}` | May emit `notifications/progress` and incremental hits. |
 | `pagination` | `{}` | List results support `cursor`/`nextCursor`. |
@@ -61,6 +64,10 @@ Because `retrieve` is the workhorse, its metadata is richer:
     "fusion": ["rrf", "weighted"],
     "mmr": true,
     "rerankBuiltin": true,
+    "units": ["chunk", "document", "tree-node", "community"],
+    "levels": 3,
+    "tokenBudget": true,
+    "confidence": true,
     "defaultMode": "hybrid"
 } }
 ```
@@ -76,6 +83,21 @@ Because `retrieve` is the workhorse, its metadata is richer:
 </ResponseField>
 <ResponseField name="rerankBuiltin" type="boolean">
   Whether the server can rerank inside `retrieve` (vs a separate `rerank` call).
+</ResponseField>
+<ResponseField name="units" type="string[]">
+  The [retrieval granularities](/concepts/agentic-rag) the server can return
+  (chunk · document · node · triplet · path · subgraph · community · tree-node ·
+  page). Absent ⇒ chunk/passage only.
+</ResponseField>
+<ResponseField name="levels" type="integer">
+  Abstraction levels in a hierarchical corpus (RAPTOR tree depth, Leiden
+  levels). Absent ⇒ flat.
+</ResponseField>
+<ResponseField name="tokenBudget" type="boolean">
+  Whether `retrieve.tokenBudget` packing is honoured.
+</ResponseField>
+<ResponseField name="confidence" type="boolean">
+  Whether hits carry a normalised `[0,1]` `confidence`.
 </ResponseField>
 
 ## Gating in practice

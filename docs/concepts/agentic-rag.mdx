@@ -1,0 +1,81 @@
+---
+title: Agentic & self-improving RAG
+description: How RCP supports Self-RAG, Corrective RAG, Adaptive RAG, FLARE, DeepRAG, DRIFT, HippoRAG, MemoRAG, RAPTOR, and LongRAG — without a wire break.
+icon: robot
+---
+
+Modern RAG is no longer "retrieve once, then answer." The frontier is a
+reasoning loop that decides *when* to retrieve, *at what granularity*, *how
+much*, and *whether the evidence is good enough* — then retrieves again. RCP
+keeps the core `retrieve` stateless but exposes the handful of primitives those
+loops need, all **optional and capability-gated** (absent ⇒ classic behaviour,
+no wire break).
+
+## The primitives
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="timeline">
+    An opaque `sessionId` threads many retrieves in one trajectory so the server
+    can **dedup** already-seen hits and **cache** frontier/plan state. Gated by
+    `session`. See [retrieve §sessions](/methods/retrieve).
+  </Card>
+  <Card title="Confidence" icon="gauge">
+    A normalised `[0,1]` `Hit.confidence` — comparable across calls — that
+    corrective and adaptive systems threshold on. Gated by `retrieve.confidence`.
+  </Card>
+  <Card title="Granularity & level" icon="layer-group">
+    `unit` (chunk · document · node · triplet · path · subgraph · community ·
+    tree-node · page) and `level` (RAPTOR depth, Leiden level) select *what* and
+    *how abstract* a hit is.
+  </Card>
+  <Card title="Token budget" icon="ruler">
+    `tokenBudget` packs top hits until they fill N tokens instead of a fixed `k`
+    — long-context readers and the chunk-explosion problem.
+  </Card>
+  <Card title="Provenance" icon="diagram-project">
+    `Hit.provenance` carries graph/tree lineage (path · nodes · edges · leaves)
+    for auditable, path-level citation.
+  </Card>
+  <Card title="Feedback & memory" icon="arrows-rotate">
+    [`feedback`](/methods/feedback) flows reward/used/poison signals back;
+    [`memory`](/methods/memory) builds a global memory that emits retrieval clues.
+  </Card>
+</CardGroup>
+
+## Mapping SOTA systems to RCP
+
+| System | What it needs | RCP surface |
+|--------|---------------|-------------|
+| **Self-RAG** | retrieve-on-demand, relevance/support critique | client gates `retrieve`; `Hit.confidence` for `IsRel`/`IsSup` |
+| **Corrective RAG (CRAG)** | evaluator buckets, web-search fallback | `Hit.confidence` for correct/ambiguous/incorrect; [Selector/Federation](/features/federation) for a web engine |
+| **Adaptive-RAG** | route by query complexity | client picks no-retrieve vs single vs multi-step over `sessionId` |
+| **FLARE** | confidence-triggered active retrieval | re-issue `retrieve` on low `Hit.confidence` |
+| **DeepRAG / Search-R1** | retrieval as a learned policy | `feedback` with `reward` / `used` / `cited` closes the loop |
+| **GraphRAG DRIFT** | iterative graph traversal with state | `graph op:"drift"` `followups` + `sessionId` |
+| **HippoRAG** | PPR over a KG from recalled entry-points | `memory/recall` clues → `graph seedIds`; `Hit.provenance.nodes` |
+| **MemoRAG** | global memory → surrogate queries | `memory/build` + `memory/recall` |
+| **RAPTOR** | recursive summary tree, multi-level | `retrieve unit:"tree-node", level:N`; `Hit.provenance.leaves` |
+| **LongRAG** | long retrieval units, budgeted context | `retrieve unit:"document"` + `tokenBudget` |
+
+## The canonical loop
+
+Every one of these is a **client policy** over standard RCP methods — RCP
+supplies the efficient state handle, not the agent:
+
+```
+think ──▶ retrieve (sessionId) ──▶ observe Hit.confidence
+  ▲                                        │
+  └──────── retrieve again ◀── below threshold?
+                                           │ above
+                                     verify ──▶ answer
+```
+
+<Info>
+RCP deliberately does **not** prescribe an agent policy — when to stop, how to
+route, what reward to assign. It exposes only the primitives (sessions,
+confidence, granularity, budget, provenance, feedback, memory) that make an
+agentic loop *efficient and auditable*. The reasoning stays in the client.
+</Info>
+
+See [Appendix B of the specification](/reference/specification) for the full
+technique-to-surface mapping.
