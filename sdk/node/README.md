@@ -112,4 +112,4 @@ node test.js                               # smoke test incl. Node client ↔ C+
 
 ## License
 
-MIT © 2025 Ayush Bhat.
+MIT © 2026 Ayush Bhat.

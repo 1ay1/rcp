@@ -119,4 +119,4 @@ you never need `serde` to speak RCP.
 
 ## License
 
-MIT © 2025 Ayush Bhat.
+MIT © 2026 Ayush Bhat.

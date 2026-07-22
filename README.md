@@ -252,5 +252,5 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 
 ## License
 
-MIT © 2025 Ayush Bhat. Contributions welcome — RCP is meant to be a community
+MIT © 2026 Ayush Bhat. Contributions welcome — RCP is meant to be a community
 standard, not a single vendor's API.
