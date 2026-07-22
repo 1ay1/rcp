@@ -1,0 +1,106 @@
+---
+title: Governance
+description: How RCP evolves — the stability contract, the change process, and why you rarely need to change the spec at all.
+icon: scale-balanced
+---
+
+RCP is designed so that the protocol can grow for years without ever breaking a
+deployed client. This page explains the guarantees that make that true and the
+process by which the spec changes.
+
+## The stability contract
+
+<Card title="Within a major version, the wire never breaks under you." icon="shield-check">
+  Every change inside `RCP/1` is **additive** and **capability-discovered.** A
+  client written against the first release of RCP/1 keeps working against every
+  later RCP/1 server — it simply won't *see* capabilities it doesn't ask about.
+</Card>
+
+Concretely, within RCP/1 a compliant change **may**:
+
+- add a new optional field to a request or result;
+- add a new capability, method, or error code;
+- add a new value to an open-ended enum (behind a capability).
+
+…and **may not**:
+
+- remove or rename an existing field, method, capability, or error code;
+- change the type or meaning of an existing field;
+- make a previously optional field required.
+
+Anything in the second list requires a **new major version** (`RCP/2`),
+negotiated through the same `initialize` handshake. See
+[Versioning](/reference/versioning) for how `protocolVersion` is negotiated.
+
+## Capabilities do the heavy lifting
+
+Because a server advertises exactly what it supports and a client gates every
+call on those capabilities, **new features are invisible until both sides opt
+in.** A five-year-old client and a brand-new engine negotiate down to their
+shared subset automatically — no version sniffing, no feature flags, no probing.
+
+<Tip>
+This is why the changelog is short and the wire is stable: most "new features"
+are new **capabilities**, not changes to existing messages. Adding one can never
+break a client that never asks for it.
+</Tip>
+
+## Extensions vs. spec changes
+
+Before proposing a change to the spec, ask whether you need one at all. RCP has
+two escape hatches for vendor- or deployment-specific behaviour that require
+**no** spec change:
+
+<CardGroup cols={2}>
+  <Card title="_meta passthrough" icon="paperclip" href="/concepts/extensibility">
+    Every message carries an optional `_meta` object. Namespace your keys and
+    attach anything — a conforming peer ignores what it doesn't understand.
+  </Card>
+  <Card title="Reserved x- fields" icon="puzzle-piece" href="/concepts/extensibility">
+    Prefix experimental fields with `x-`. They travel the wire and round-trip
+    cleanly without ever colliding with a future standard field.
+  </Card>
+</CardGroup>
+
+Reach for the spec process only when a change is **general** — useful to more
+than one vendor and worth guaranteeing across every implementation.
+
+## The change process
+
+<Steps>
+  <Step title="Open a discussion">
+    File an issue describing the problem and the proposed wire change. Start with
+    the *use case*, not the JSON — the shape usually falls out of it.
+  </Step>
+  <Step title="Classify it">
+    **Editorial** changes (clarifications, examples, tightened wording) touch no
+    message shape and merge quickly. **Normative** changes touch the wire and go
+    through the full process below.
+  </Step>
+  <Step title="Prove it additive">
+    Show that the change is capability-discovered and that an existing client
+    keeps working. If it can't be, it is an `RCP/2` proposal.
+  </Step>
+  <Step title="Land spec, schema, and tests together">
+    A normative change updates `spec/rcp-1.0.md`, `schema/rcp-1.0.json`, and the
+    [conformance suite](/operating/conformance) in one reviewable change.
+  </Step>
+  <Step title="Update the reference SDKs">
+    All four SDKs move together so the byte-for-byte interop guarantee holds. A
+    feature that ships in one SDK but not the others is not done.
+  </Step>
+</Steps>
+
+## Decision-making
+
+RCP is developed **in the open** on GitHub. Proposals are discussed on public
+issues and pull requests; decisions and their rationale are recorded there.
+Maintainers steward the spec toward consistency, minimalism, and the stability
+contract above — the guiding question for any change is *"does a thin client
+still stay thin, and does a deployed client keep working?"*
+
+<Note>
+RCP is a young standard and its governance is intentionally lightweight. As the
+ecosystem grows, this page will grow with it. If you want to help shape that
+process, [get involved](/community/contributing).
+</Note>

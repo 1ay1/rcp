@@ -1,0 +1,75 @@
+---
+title: Brand
+description: The RCP name, logo, and colors — and how to use them when you build on the protocol.
+icon: palette
+---
+
+RCP is an open standard, and we want the ecosystem to signal compatibility
+clearly. These assets and guidelines help you do that consistently. The name and
+these guidelines are free to use to indicate that your project speaks RCP.
+
+## The name
+
+- The protocol is the **Retrieval Context Protocol**, abbreviated **RCP**.
+- A specific wire version is written **RCP/1** (the `1` is the negotiated
+  `protocolVersion`).
+- Prefer *"speaks RCP"*, *"an RCP server"*, or *"RCP-compatible"* over
+  possessive or product-like phrasings.
+
+<Tip>
+One-liner you can reuse: **"RCP is one open, versioned JSON-RPC protocol so any
+RAG engine can expose embed, rerank, retrieve, graph, and index — and any client
+can consume it uniformly."**
+</Tip>
+
+## Logo
+
+The mark ships in two variants tuned for light and dark backgrounds.
+
+<Frame>
+  <img src="/logo/light.svg" alt="RCP logo" width="220" />
+</Frame>
+
+<CardGroup cols={2}>
+  <Card title="Light background" icon="download" href="/logo/light.svg">
+    `/logo/light.svg` — dark mark for use on light surfaces.
+  </Card>
+  <Card title="Dark background" icon="download" href="/logo/dark.svg">
+    `/logo/dark.svg` — light mark for use on dark surfaces.
+  </Card>
+</CardGroup>
+
+## Colors
+
+The palette is built around a single emerald primary with a lighter and darker
+step for hover and dark-mode states.
+
+| Role | Hex | Usage |
+|------|-----|-------|
+| Primary | `#10b981` | Links, buttons, accents. |
+| Light | `#34d399` | Hover states, light-mode accents. |
+| Dark | `#059669` | Dark-mode accents, pressed states. |
+| Surface (light) | `#fbfbf9` | Page background, light mode. |
+| Surface (dark) | `#0d1117` | Page background, dark mode. |
+
+Type is set in **Lora** for headings and **Inter** for body — but any clean
+serif/sans pairing preserves the feel.
+
+## Using the mark
+
+<CardGroup cols={2}>
+  <Card title="Please do" icon="circle-check">
+    Use the logo to show your project is RCP-compatible. Keep clear space around
+    it. Use the variant that matches your background.
+  </Card>
+  <Card title="Please don't" icon="circle-xmark">
+    Recolor or distort the mark, imply endorsement of a closed product, or use
+    the name in a way that suggests RCP is your project rather than an open
+    standard.
+  </Card>
+</CardGroup>
+
+<Note>
+Building something on RCP? [Open an issue or PR](/community/contributing) and we
+are glad to link real-world engines, clients, and SDKs from the docs.
+</Note>

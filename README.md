@@ -250,6 +250,15 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
   of truth; the site links them and syncs the schema.
 - `rcp.json` — sample engine registry.
 
+## Contributing
+
+RCP is meant to be a community standard, not a single vendor's API. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for how to file issues, add an engine or
+SDK, and run the conformance suite; [`docs/community/governance.mdx`](docs/community/governance.mdx)
+for how the spec evolves (additive and capability-discovered — the wire never
+breaks under you); and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community
+standards.
+
 ## License
 
 MIT © 2026 Ayush Bhat. Contributions welcome — RCP is meant to be a community

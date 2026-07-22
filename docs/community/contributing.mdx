@@ -1,0 +1,121 @@
+---
+title: Contributing
+description: How to get involved — file issues, improve the spec, build an SDK, or add a conforming engine. RCP is meant to be a community standard.
+icon: code-pull-request
+---
+
+RCP is meant to be a **community standard, not a single vendor's API.** The wire
+is small, the spec is public, and every reference SDK is dependency-free and
+readable in an afternoon. Contributions of every size are welcome.
+
+<CardGroup cols={2}>
+  <Card title="File an issue" icon="bug" href="https://github.com/1ay1/rcp/issues">
+    Report a spec ambiguity, an SDK bug, or a gap in the docs. Ambiguities in a
+    protocol spec are bugs — please report them.
+  </Card>
+  <Card title="Open a pull request" icon="code-pull-request" href="https://github.com/1ay1/rcp/pulls">
+    Fix a typo, tighten wording, add a test, or implement a feature. Small,
+    focused PRs merge fastest.
+  </Card>
+</CardGroup>
+
+## Ways to contribute
+
+<CardGroup cols={2}>
+  <Card title="Implement an engine" icon="server">
+    Wrap your retrieval stack behind an RCP server and it works with every RCP
+    client. Prove it with the [conformance suite](/operating/conformance).
+  </Card>
+  <Card title="Write an SDK" icon="cubes">
+    A new language binding is the highest-leverage contribution. Mirror the
+    [existing SDKs](/sdks/overview) — same wire, same method names, same errors.
+  </Card>
+  <Card title="Sharpen the spec" icon="feather">
+    Clarify normative language, add examples, or close an edge case. The
+    [specification](/reference/specification) is the source of truth.
+  </Card>
+  <Card title="Improve the docs" icon="book">
+    Every page in this site is an MDX file under `docs/`. Fix a rough
+    explanation, add a diagram, or write a guide.
+  </Card>
+</CardGroup>
+
+## Repository layout
+
+The single source of truth is the spec and schema at the repo root; everything
+else follows from them.
+
+| Path | What lives there |
+|------|------------------|
+| `spec/rcp-1.0.md` | The normative RCP/1 specification. |
+| `schema/rcp-1.0.json` | JSON Schema for every message shape. |
+| `sdk/cpp`, `sdk/python`, `sdk/node`, `sdk/rust` | The four reference SDKs. |
+| `conformance/check.py` | The transport-agnostic conformance runner. |
+| `examples/` | Minimal example servers and clients. |
+| `docs/` | This Mintlify documentation site. |
+
+## Local setup
+
+Each SDK is self-contained and dependency-free. Build and test the one you are
+changing:
+
+<CodeGroup>
+```sh Rust
+cd sdk/rust && cargo test && cargo clippy
+```
+
+```sh Node.js
+cd sdk/node && node test.js
+```
+
+```sh Python
+python3 sdk/python/test_bindings.py
+```
+
+```sh C++
+cd sdk/cpp && make example_server example_client
+```
+</CodeGroup>
+
+The C++ SDK requires a C++23 compiler (it uses `std::expected`). The Python and
+Node SDKs need only their language runtime — no compiler, no packages.
+
+## The bar for a change
+
+Every change must keep the four SDKs **byte-for-byte interoperable.** Before you
+open a PR:
+
+<Steps>
+  <Step title="Run the conformance suite">
+    Point the runner at your engine over stdio or HTTP. A reference engine must
+    pass **10/10**.
+
+    ```sh
+    python3 conformance/check.py -- ./sdk/rust/target/debug/examples/example_server
+    ```
+  </Step>
+  <Step title="Cross-drive the other SDKs">
+    If you touched the wire, confirm a client in one language still drives a
+    server in another. The SDK test suites already include cross-language cases.
+  </Step>
+  <Step title="Update the spec and schema together">
+    A wire change is not done until `spec/rcp-1.0.md` and `schema/rcp-1.0.json`
+    both describe it — and the docs are regenerated.
+  </Step>
+  <Step title="Keep it additive">
+    Within RCP/1, new behaviour must be **capability-discovered**, never a
+    breaking change. See [Governance](/community/governance).
+  </Step>
+</Steps>
+
+<Note>
+Have an idea that changes the wire? Open a discussion issue **before** writing
+the code. [Governance](/community/governance) explains how proposals move from
+idea to spec — and how to ship vendor-specific behaviour today via `_meta`
+without changing the spec at all.
+</Note>
+
+## Code of conduct
+
+Participation in the RCP community is governed by our
+[Code of Conduct](/community/conduct). By taking part, you agree to uphold it.

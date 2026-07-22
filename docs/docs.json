@@ -142,6 +142,20 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Community",
+        "pages": [
+          {
+            "group": "Community",
+            "pages": [
+              "community/contributing",
+              "community/governance",
+              "community/conduct",
+              "community/brand"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -153,9 +167,21 @@
   "seo": {
     "metatags": {
       "og:image": "/images/og.png"
-    }
+    },
+    "indexing": "navigable"
   },
   "contextual": {
     "options": ["copy", "view", "chatgpt", "claude"]
-  }
+  },
+  "redirects": [
+    { "source": "/introduction", "destination": "/get-started/introduction", "permanent": true },
+    { "source": "/quickstart", "destination": "/get-started/quickstart", "permanent": true },
+    { "source": "/spec", "destination": "/reference/specification", "permanent": true },
+    { "source": "/specification", "destination": "/reference/specification", "permanent": true },
+    { "source": "/schema", "destination": "/reference/schema", "permanent": true },
+    { "source": "/sdk", "destination": "/sdks/overview", "permanent": true },
+    { "source": "/sdks", "destination": "/sdks/overview", "permanent": true },
+    { "source": "/contributing", "destination": "/community/contributing", "permanent": true },
+    { "source": "/methods", "destination": "/methods/overview", "permanent": true }
+  ]
 }
