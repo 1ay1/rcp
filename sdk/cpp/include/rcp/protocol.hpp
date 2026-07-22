@@ -55,7 +55,7 @@ struct PeerInfo {
 // A typed enum so capability checks are exhaustive matches, not string compares.
 enum class Capability {
     Embed, SparseEmbed, MultiVector, Rerank, Retrieve, Transform, Graph, Index,
-    Session, Feedback, Memory, Catalog
+    Session, Feedback, Memory, Filter, Streaming, Pagination, Citations, Log, Catalog
 };
 
 [[nodiscard]] constexpr std::string_view to_string(Capability c) noexcept {
@@ -71,6 +71,11 @@ enum class Capability {
         case Capability::Session:     return "session";
         case Capability::Feedback:    return "feedback";
         case Capability::Memory:      return "memory";
+        case Capability::Filter:      return "filter";
+        case Capability::Streaming:   return "streaming";
+        case Capability::Pagination:  return "pagination";
+        case Capability::Citations:   return "citations";
+        case Capability::Log:         return "log";
         case Capability::Catalog:     return "catalog";
     }
     return "?";
@@ -79,7 +84,7 @@ enum class Capability {
 // presence ⇒ supported. Each optional is nullopt (absent) or a metadata object.
 struct Capabilities {
     std::optional<Json> embed, sparse_embed, multi_vector, rerank, retrieve, transform, graph, index,
-                        session, feedback, memory, catalog;
+                        session, feedback, memory, filter, catalog;
     bool streaming = false, pagination = false, citations = false, log_ = false;
 
     [[nodiscard]] const std::optional<Json>& slot(Capability c) const noexcept {
@@ -95,11 +100,24 @@ struct Capabilities {
             case Capability::Session:     return session;
             case Capability::Feedback:    return feedback;
             case Capability::Memory:      return memory;
+            case Capability::Filter:      return filter;
             case Capability::Catalog:     return catalog;
+            // Object-form presence flags carry no metadata slot; has() handles them.
+            case Capability::Streaming: case Capability::Pagination:
+            case Capability::Citations: case Capability::Log:
+                                          return embed;  // unused; has() special-cases
         }
         return embed; // unreachable
     }
-    [[nodiscard]] bool has(Capability c) const noexcept { return slot(c).has_value(); }
+    [[nodiscard]] bool has(Capability c) const noexcept {
+        switch (c) {
+            case Capability::Streaming:   return streaming;
+            case Capability::Pagination:  return pagination;
+            case Capability::Citations:   return citations;
+            case Capability::Log:         return log_;
+            default:                      return slot(c).has_value();
+        }
+    }
 
     // Ergonomic builders (fluent) for a server advertising what it offers.
     Capabilities& with_embed(Dimension dim, std::string identity,
@@ -165,6 +183,12 @@ struct Capabilities {
         if (engines) (*catalog)["engines"] = engines;
         return *this;
     }
+    // Metadata filtering (spec §8): advertise allowed fields and operators.
+    Capabilities& with_filter(Json fields, std::vector<std::string> operators = {}) {
+        filter = Json{{"fields", std::move(fields)}};
+        if (!operators.empty()) (*filter)["operators"] = std::move(operators);
+        return *this;
+    }
     // Free-form opt-ins for object-valued flags and vendor/extension keys.
     Capabilities& with_streaming()  { streaming = true;  return *this; }
     Capabilities& with_pagination() { pagination = true; return *this; }
@@ -179,7 +203,8 @@ struct Capabilities {
         put("retrieve", retrieve);     put("transform", transform);
         put("graph", graph);           put("index", index);
         put("session", session);       put("feedback", feedback);
-        put("memory", memory);         put("catalog", catalog);
+        put("memory", memory);         put("filter", filter);
+        put("catalog", catalog);
         // Object-form presence flags (spec §6): presence ⇒ supported.
         if (streaming)  j["streaming"]  = Json::object();
         if (pagination) j["pagination"] = Json::object();
@@ -199,6 +224,7 @@ struct Capabilities {
         c.rerank = get("rerank"); c.retrieve = get("retrieve"); c.transform = get("transform");
         c.graph = get("graph"); c.index = get("index");
         c.session = get("session"); c.feedback = get("feedback"); c.memory = get("memory");
+        c.filter = get("filter");
         c.catalog = get("catalog");
         // A flag is "present" whether it arrived as an object (§6) or a legacy bool.
         c.streaming  = j.contains("streaming")  && !j["streaming"].is_null();

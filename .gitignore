@@ -10,6 +10,7 @@ sdk/cpp/build/
 
 # Python
 sdk/python/.venv/
+examples/.poc-venv/
 sdk/python/build/
 sdk/python/dist/
 sdk/python/*.egg-info/

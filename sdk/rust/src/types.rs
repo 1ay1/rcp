@@ -33,6 +33,11 @@ pub enum Capability {
     Session,
     Feedback,
     Memory,
+    Filter,
+    Streaming,
+    Pagination,
+    Citations,
+    Log,
     Catalog,
 }
 
@@ -51,12 +56,17 @@ impl Capability {
             Capability::Session => "session",
             Capability::Feedback => "feedback",
             Capability::Memory => "memory",
+            Capability::Filter => "filter",
+            Capability::Streaming => "streaming",
+            Capability::Pagination => "pagination",
+            Capability::Citations => "citations",
+            Capability::Log => "log",
             Capability::Catalog => "catalog",
         }
     }
 
     /// Every capability, for iteration.
-    pub const ALL: [Capability; 12] = [
+    pub const ALL: [Capability; 17] = [
         Capability::Embed,
         Capability::SparseEmbed,
         Capability::MultiVector,
@@ -68,6 +78,11 @@ impl Capability {
         Capability::Session,
         Capability::Feedback,
         Capability::Memory,
+        Capability::Filter,
+        Capability::Streaming,
+        Capability::Pagination,
+        Capability::Citations,
+        Capability::Log,
         Capability::Catalog,
     ];
 }

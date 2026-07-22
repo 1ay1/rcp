@@ -64,6 +64,7 @@
             "levels": { "type": "integer", "minimum": 1 },
             "tokenBudget": { "type": "boolean" },
             "confidence": { "type": "boolean" },
+            "scoreScale": { "enum": ["cosine", "dot", "bm25", "probability", "unbounded"] },
             "defaultMode": { "enum": ["dense", "sparse", "hybrid"] }
           }
         },

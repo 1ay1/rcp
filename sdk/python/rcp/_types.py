@@ -36,6 +36,11 @@ class Capability(enum.Enum):
     Session = "session"
     Feedback = "feedback"
     Memory = "memory"
+    Filter = "filter"
+    Streaming = "streaming"
+    Pagination = "pagination"
+    Citations = "citations"
+    Log = "log"
     Catalog = "catalog"
 
 

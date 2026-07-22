@@ -29,30 +29,63 @@ another.
 
 ## Why retrieval needs its own protocol
 
-Retrieval is not just "another tool call." It has a rich, well-studied shape that
-a generic tool interface cannot express faithfully:
+The honest challenge: *MCP already lets a server expose a `search(query) →
+documents` tool — why a second protocol?* If retrieval were a single opaque
+function call, it would not deserve one. It is not. An MCP tool is a **typed
+function** (opaque name, one argument blob in, one content blob out); RCP is a
+**domain contract over the retrieval pipeline**. Six things a flat tool call
+cannot express — and that every client/server would otherwise re-invent as
+bespoke glue:
 
 <AccordionGroup>
-  <Accordion title="A pipeline, not a function" icon="diagram-project">
-    Transform → recall → rerank → diversify → cite, with each stage independently
-    negotiable. A single `tool.call` cannot expose `candidateK ≥ topN ≥ k`, MMR
-    `lambda`, fusion strategy, or per-stage `scores`.
+  <Accordion title="A negotiated pipeline, not a fixed signature" icon="diagram-project">
+    Transform → recall → fuse → rerank → diversify → cite, with each stage
+    independently negotiated at `initialize` and driven *either* as one
+    server-run `retrieve` *or* stage-by-stage in an agentic loop. A `tool.call`
+    cannot expose `candidateK ≥ topN ≥ k`, MMR `lambda`, fusion strategy, or
+    per-stage `scores`, and gives a client no way to *discover* that a tool even
+    supports reranking.
   </Accordion>
-  <Accordion title="Ranking semantics are first-class" icon="ranking-star">
-    Scores, ranks, and fusion (RRF) are core, because federating heterogeneous
-    engines is the norm — not an afterthought bolted onto a string result.
+  <Accordion title="The funnel is a protocol invariant" icon="filter">
+    `candidateK ≥ rerank.topN ≥ k` is a checkable constraint the wire enforces.
+    In a tool call these are three undocumented integers whose relationship
+    lives only in prose a model has to guess at.
+  </Accordion>
+  <Accordion title="Structured, comparable results — not a text blob" icon="ranking-star">
+    A `Hit` carries a stable `id`, a `score` on a declared scale, `confidence ∈
+    [0,1]`, granularity (`unit`/`level`), `provenance`, `citation`, and `trust`.
+    Standard IR metrics (nDCG, Recall@k, MRR) apply directly and *portably
+    across engines*. An MCP tool flattens all of this into rendered text,
+    discarding the ranking structure fusion and offline evaluation depend on.
+  </Accordion>
+  <Accordion title="Rank-fusion across engines" icon="code-merge">
+    Dense and BM25 scores are not comparable; merging them correctly needs
+    rank-level RRF. RCP defines this so a federating gateway can fan out and
+    fuse. Independent MCP `search` tools return incomparable prose a client
+    cannot fuse without knowing each tool's internal scoring.
+  </Accordion>
+  <Accordion title="Streaming partial hits and staged progress" icon="wave-pulse">
+    Recall-then-rerank is latency-shaped; RCP streams `notifications/progress`
+    with stage labels and can emit incremental hits. A tool call is
+    request/response — the caller waits for the whole pipeline blind.
   </Accordion>
   <Accordion title="A distinct threat model" icon="shield-halved">
     Retrieved content is *untrusted data moving toward an LLM's context*,
-    dominated by indirect prompt injection and provenance concerns that ordinary
-    RPC never faces. RCP carries `trust`/`citation` for exactly this. See
+    dominated by indirect prompt injection. RCP carries
+    `trust.injectionSuspected`/`sanitized` per hit; a generic tool's text output
+    has no place to put a per-passage trust signal. See
     [Security](/operating/security).
   </Accordion>
 </AccordionGroup>
 
-Modelling retrieval as a plain MCP tool would erase all of this. RCP gives the
-retrieval layer the same first-class, vendor-neutral contract that MCP gave tools
-and ACP gave agents.
+**The litmus test:** if your need really is one opaque `query → text` call — no
+reranking, no fusion, no citations, no evaluation, no per-hit trust — then an MCP
+tool is the right tool; use it. RCP is for when retrieval is a *system* rather
+than a function, which is what production RAG has become. The two **compose**
+rather than compete: a gateway can even expose an RCP `retrieve` *as* an MCP tool
+for one-shot consumers — the structured protocol degrades gracefully to the flat
+one, but not the reverse. RCP gives the retrieval layer the same first-class,
+vendor-neutral contract that MCP gave tools and ACP gave agents.
 
 <Card title="See the whole stack" icon="layer-group" href="/ecosystem/stack">
   Where RCP, MCP, and ACP sit in a modern agent architecture.

@@ -20,7 +20,7 @@
 ## Table of Contents
 
 - [Abstract](#abstract)
-- [1. Goals & Non-Goals](#1-goals--non-goals)
+- [1. Goals & Non-Goals](#1-goals--non-goals) — [why not MCP?](#13-why-rcp-and-not-an-mcp-tool)
 - [2. Roles](#2-roles)
 - [3. The retrieval pipeline model](#3-the-retrieval-pipeline-model) — [stages](#31-pipeline-stages), [adjacent surfaces](#32-adjacent-surfaces), [funnel invariant](#33-the-funnel-invariant), [driving it](#34-two-ways-to-drive-it)
 - [4. Message Format](#4-message-format) — requests, `_meta`, notifications, [data types](#46-data-types), [identifiers, concurrency & limits](#47-identifiers-concurrency--limits), [content & modality](#48-content--modality)
@@ -110,6 +110,65 @@ simple server and a SOTA engine speak the same protocol.
 - RCP does **not** define authentication beyond carrying opaque HTTP headers;
   deployment auth is layered on top.
 - RCP does **not** mandate persistence, sharding, or consistency semantics.
+
+### 1.3 Why RCP and not an MCP tool?
+
+The honest challenge to RCP is: *MCP already lets a server expose a
+`search(query) → documents` tool. Why a second protocol?* If retrieval were a
+single opaque function call, it would not deserve one. It is not. Retrieval is a
+**multi-stage pipeline with cross-cutting structure** (§3), and that structure
+is exactly what a flat tool call erases. RCP earns its existence by making that
+structure first-class instead of stuffing it into free-form tool arguments and
+unstructured text output.
+
+Concretely, an MCP tool is a *typed function*: opaque name, one JSON argument
+blob in, one content blob out. RCP is a *domain contract* over the retrieval
+pipeline. The difference matters on six axes that a generic tool cannot express
+without every client and server privately re-inventing them — which is the
+bespoke glue RCP exists to delete:
+
+1. **Negotiated pipeline shape, not a fixed signature.** A client discovers at
+   `initialize` whether the server offers hybrid recall, a rerank cascade, MMR,
+   graph search, or query transformation, and drives them *either* as one
+   server-run `retrieve` *or* stage-by-stage for an agentic loop (§3.4). Two
+   MCP `search` tools with the same name may accept wildly different argument
+   objects; there is no negotiation surface, so a client cannot know a tool
+   supports reranking without out-of-band documentation.
+2. **The funnel is a protocol invariant, not a convention.** `candidateK ≥
+   rerank.topN ≥ k` (§3.3) is a checkable constraint the wire enforces. In a
+   tool call these are three undocumented integers whose relationship lives only
+   in a prose description a model has to guess at.
+3. **Structured, comparable results — not a text blob.** A `Hit` carries a
+   stable `id`, a `score` on a declared scale, `confidence ∈ [0,1]`,
+   granularity (`unit`/`level`), `provenance`, `citation`, and `trust` signals
+   (§4.6, §7.7.2). Standard IR metrics (nDCG, Recall@k, MRR — Appendix F) apply
+   directly and *portably across engines*. An MCP tool typically flattens all of
+   this into rendered text, discarding the ranking structure that both
+   downstream fusion and offline evaluation depend on.
+4. **Rank-fusion across engines.** Scores from a dense retriever and a BM25
+   retriever are not comparable; merging them correctly needs rank-level RRF
+   (§16.3). RCP defines this so a federating gateway can fan out to many servers
+   and fuse (§16). Independent MCP `search` tools return incomparable prose; a
+   client cannot fuse them without knowing each tool's internal scoring.
+5. **Streaming partial hits and staged progress.** Recall-then-rerank is
+   latency-shaped; RCP streams `notifications/progress` with stage labels and
+   can emit incremental hits (§9). A tool call is request/response — the caller
+   waits for the whole pipeline with no visibility into which stage is running.
+6. **Retrieval-specific safety.** Indirect prompt injection through retrieved
+   content is *the* primary RAG threat (§15.2). RCP carries
+   `trust.injectionSuspected`/`sanitized` on each hit so a client can reason
+   about provenance per-result. A generic tool's text output has no place to put
+   a per-passage trust signal.
+
+The litmus test: if your retrieval need really is one opaque
+`query → text` call with no reranking, no fusion, no citations, no evaluation,
+and no per-hit trust — then an MCP tool is the right tool and you should use it.
+RCP is for when retrieval is a *system* rather than a function, which is what
+production RAG has become. The two protocols compose rather than compete: an
+agent runtime speaks **ACP** to its client, calls tools via **MCP**, and fetches
+grounding context via **RCP** (Appendix C). A gateway **MAY** even expose an RCP
+`retrieve` *as* an MCP tool for consumers that only want the one-shot call — the
+structured protocol degrades gracefully to the flat one, but not the reverse.
 
 ---
 
@@ -454,6 +513,7 @@ field inside a known capability, as informational and ignore it (§6.2).
     "levels": 3,
     "tokenBudget": true,
     "confidence": true,
+    "scoreScale": "cosine",
     "defaultMode": "hybrid"
 } }
 ```
@@ -469,6 +529,14 @@ field inside a known capability, as informational and ignore it (§6.2).
   tree depth, Leiden levels); absent means flat.
 - `tokenBudget` — whether `retrieve.tokenBudget` packing is honoured (§7.7.2).
 - `confidence` — whether hits carry a normalised `[0,1]` `confidence` (§7.7.2).
+- `scoreScale` — the scale of `Hit.score`, one of `"cosine"`, `"dot"`, `"bm25"`,
+  `"probability"` (already `[0,1]`), or `"unbounded"` (engine-relative, e.g. raw
+  BM25F). This is **informational**: it lets a client label or bucket scores, but
+  it does **not** make scores from different servers comparable. Cross-server
+  ranking and fusion **MUST** use rank position (RRF, §16.3) or the normalised
+  `confidence` field (§7.7.2) — never raw `score` — because `score` is
+  server-scaled (§4.6) even when `scoreScale` is advertised. Absent, a client
+  **MUST NOT** assume any particular scale.
 
 Servers **MAY** add extension capability keys prefixed `x-<vendor>`; clients
 **MUST** ignore unrecognised keys.
@@ -1481,6 +1549,12 @@ An agent runtime speaks **ACP** to its client, calls tools via **MCP**, and
 fetches grounding context via **RCP**. The three share JSON-RPC framing, the
 `initialize`/capabilities handshake, `_meta` extensibility, and cursor-based
 pagination, so an implementer of one is immediately productive in another.
+
+For *why* retrieval warrants its own protocol rather than a single MCP
+`search` tool — the six axes of pipeline structure a flat tool call erases —
+see [§1.3](#13-why-rcp-and-not-an-mcp-tool). In short: MCP models a **typed
+function**, RCP models a **negotiated pipeline**; the two compose (RCP `retrieve`
+can itself be exposed as an MCP tool), and neither subsumes the other.
 
 ## Appendix D — A worked session
 
