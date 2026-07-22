@@ -1,16 +1,13 @@
 # Publishing the RCP SDKs
 
-The four reference SDKs are packaged and verified but **not yet published** to
-any registry. This guide has the one-time setup and the release flow. Once
-published, the docs quickstart can drop every "install from source" caveat.
-
-Package names:
+The four reference SDKs are **published to their registries** (v1.0.0). This
+guide has the release flow for cutting the next version.
 
 | SDK | Registry | Package | Install |
 |-----|----------|---------|---------|
-| Python | PyPI | `rcp-protocol` | `pip install rcp-protocol` (imports as `rcp`) |
-| Node.js | npm | `rcp-protocol` | `npm install rcp-protocol` |
-| Rust | crates.io | `rcp-protocol` | `cargo add rcp-protocol` (crate `rcp`) |
+| Python | [PyPI](https://pypi.org/project/rcp-protocol/) | `rcp-protocol` | `pip install rcp-protocol` (imports as `rcp`) |
+| Node.js | [npm](https://www.npmjs.com/package/rcp-protocol) | `rcp-protocol` | `npm install rcp-protocol` |
+| Rust | [crates.io](https://crates.io/crates/rcp-protocol) | `rcp-protocol` | `cargo add rcp-protocol` (crate `rcp`) |
 | C++ | vcpkg / CMake | `rcp` | `find_package(rcp CONFIG REQUIRED)` |
 
 > **Name availability:** `rcp-protocol` on PyPI/npm/crates.io and `rcp` on vcpkg

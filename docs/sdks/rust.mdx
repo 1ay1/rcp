@@ -12,9 +12,15 @@ interoperates byte-for-byte with the C++, Python, and Node.js SDKs.
 
 ## Add it
 
+```sh
+cargo add rcp-protocol
+```
+
+or in `Cargo.toml`:
+
 ```toml
 [dependencies]
-rcp-protocol = { path = "sdk/rust" }   # or a git / crates.io dependency
+rcp-protocol = "1"     # published on crates.io; the crate is imported as `rcp`
 ```
 
 Requires Rust 1.70+.

@@ -58,6 +58,13 @@ C++ SDK** (header-only), a **native Python SDK**, a **native Node.js SDK**, and 
 last three need no external crates or packages at all). Cross-language interop is
 proven by the test suites: every client drives every server, in any combination.
 
+```sh
+pip install rcp-protocol      # Python  — imports as `import rcp`
+npm install rcp-protocol      # Node.js
+cargo add rcp-protocol        # Rust    — crate is `rcp`
+# C++ (header-only, C++23): find_package(rcp CONFIG REQUIRED) + rcp::rcp
+```
+
 The C++ SDK pushes protocol invariants into the type system, proved at **compile
 time**:
 

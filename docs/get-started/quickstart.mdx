@@ -126,11 +126,11 @@ for h in c.retrieve("eiffel tower paris", k=3):
 </Step>
 
 <Step title="Run it">
-The SDK isn't on PyPI yet, so point Python at the copy in the repo (drop both
-files in the repo root):
+Install the SDK, then run the client (it launches the engine as a subprocess):
 
 ```sh
-PYTHONPATH=sdk/python python3 query.py
+pip install rcp-protocol
+python3 query.py
 ```
 
 ```text
@@ -145,7 +145,7 @@ d1 3 The Eiffel Tower is a wrought-iron tower in Paris, France.
 <Steps>
 <Step title="Save the engine as my_engine.mjs">
 ```js
-import * as rcp from "./sdk/node/src/index.js";
+import * as rcp from "rcp-protocol";
 
 // A toy index: three documents ranked by keyword overlap.
 // Swap `search` for real vector search — the wire contract never changes.
@@ -176,7 +176,7 @@ await s.serveStdio();
 
 <Step title="Save a client as query.mjs">
 ```js
-import * as rcp from "./sdk/node/src/index.js";
+import * as rcp from "rcp-protocol";
 
 const c = await rcp.connectStdio(["node", "my_engine.mjs"]);
 for (const h of await c.retrieve("eiffel tower paris", 3))
@@ -186,10 +186,10 @@ await c.shutdown();
 </Step>
 
 <Step title="Run it">
-The SDK isn't on npm yet, so import it from the repo (drop both files in the
-repo root and run from there):
+Install the SDK, then run the client (it launches the engine as a subprocess):
 
 ```sh
+npm install rcp-protocol
 node query.mjs
 ```
 
@@ -238,15 +238,27 @@ point — read [Why RCP](/get-started/introduction) for the motivation.
 
 ## Installing the SDK
 
-RCP is young and the SDKs are distributed from source today (registry publishing
-to PyPI, npm, crates.io, and vcpkg is planned):
+The SDKs are published to their registries — install the one you need:
 
-| SDK | Today |
-|-----|-------|
-| **Python** | `PYTHONPATH=sdk/python`, or copy the `sdk/python/rcp` package into your project. |
-| **Node.js** | Import `sdk/node/src/index.js`, or `npm install /path/to/rcp/sdk/node`. |
-| **Rust** | `rcp-protocol = { path = "sdk/rust" }` (or a git dependency) in `Cargo.toml`. |
-| **C++** | Header-only: add `sdk/cpp/include` to your include path (needs C++23). |
+<CodeGroup>
+```sh Python
+pip install rcp-protocol          # imports as `import rcp`
+```
+
+```sh Node.js
+npm install rcp-protocol
+```
+
+```sh Rust
+cargo add rcp-protocol             # crate is `rcp`
+```
+
+```sh C++
+# header-only, C++23 — via CMake:
+#   find_package(rcp CONFIG REQUIRED)
+#   target_link_libraries(app PRIVATE rcp::rcp)
+```
+</CodeGroup>
 
 Each [SDK page](/sdks/overview) has the full install and API details.
 
