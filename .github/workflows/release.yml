@@ -1,0 +1,73 @@
+name: Release SDKs
+
+# Publishes the reference SDKs to their registries when a version tag is pushed.
+#
+#   git tag v1.0.0 && git push origin v1.0.0
+#
+# Secrets / setup required (see PUBLISHING.md):
+#   - PyPI:    Trusted Publishing (OIDC) configured for this repo — no token.
+#   - npm:     NPM_TOKEN secret (automation token).
+#   - crates:  CARGO_REGISTRY_TOKEN secret (crates.io API token).
+#
+# Each job is independent; a failure in one registry does not block the others.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  pypi:
+    name: Publish Python → PyPI
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write # PyPI Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+        working-directory: sdk/python
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist
+
+  npm:
+    name: Publish Node → npm
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish
+        run: npm publish --access public
+        working-directory: sdk/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  crates:
+    name: Publish Rust → crates.io
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish
+        run: cargo publish --token "${CARGO_REGISTRY_TOKEN}"
+        working-directory: sdk/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

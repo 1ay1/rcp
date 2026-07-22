@@ -29,11 +29,16 @@
   "homepage": "https://rcp-6d6ef6d5.mintlify.site/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1ay1/rcp.git"
+    "url": "git+https://github.com/1ay1/rcp.git",
+    "directory": "sdk/node"
+  },
+  "bugs": {
+    "url": "https://github.com/1ay1/rcp/issues"
   },
   "files": [
     "src",
     "examples",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ]
 }

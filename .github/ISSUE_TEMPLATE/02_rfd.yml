@@ -1,0 +1,48 @@
+name: Request for Discussion (RFD)
+description: Propose a change to the protocol, schema, or a new capability.
+labels: ["rfd"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        RCP evolves through **RFDs**. The wire is stable and changes are additive
+        and capability-discovered — see
+        [Governance](https://rcp-6d6ef6d5.mintlify.site/community/governance).
+        For anything more than a small clarification, please copy the
+        [RFD template](https://github.com/1ay1/rcp/blob/main/rfds/0000-template.md)
+        into a PR under `rfds/` and link it here.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One paragraph — what do you want to change and why?
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What retrieval technique or use case does today's protocol fail to express?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The concrete wire/schema/capability change. Include example messages.
+    validations:
+      required: true
+  - type: textarea
+    id: compat
+    attributes:
+      label: Compatibility
+      description: How does this stay additive? What capability gates it? Does any existing shape change?
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: This change is additive and capability-gated (the wire does not break under existing peers).
+        - label: I've considered the security implications (trust boundaries, injection, DoS).

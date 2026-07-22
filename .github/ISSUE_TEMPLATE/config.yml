@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/1ay1/rcp/discussions
+    about: Ask a question or discuss an idea before filing an RFD.
+  - name: Documentation
+    url: https://rcp-6d6ef6d5.mintlify.site/
+    about: Read the spec, concepts, methods, and SDK guides.
+  - name: Report a security vulnerability
+    url: https://github.com/1ay1/rcp/security/advisories/new
+    about: Please report vulnerabilities privately, not as public issues.

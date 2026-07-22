@@ -1,0 +1,6 @@
+@PACKAGE_INIT@
+
+# rcp is a header-only INTERFACE library — no components, no dependencies.
+include("${CMAKE_CURRENT_LIST_DIR}/rcpTargets.cmake")
+
+check_required_components(rcp)

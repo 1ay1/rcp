@@ -6,9 +6,12 @@ rust-version = "1.70"
 description = "Retrieval Context Protocol — native Rust SDK (zero dependencies)"
 license = "MIT"
 repository = "https://github.com/1ay1/rcp"
-homepage = "https://github.com/1ay1/rcp"
+homepage = "https://rcp-6d6ef6d5.mintlify.site/"
+documentation = "https://docs.rs/rcp-protocol"
+readme = "README.md"
 keywords = ["rcp", "rag", "retrieval", "json-rpc", "mcp"]
 categories = ["api-bindings", "text-processing"]
+include = ["src/**/*", "examples/**/*", "README.md", "LICENSE"]
 
 [lib]
 name = "rcp"

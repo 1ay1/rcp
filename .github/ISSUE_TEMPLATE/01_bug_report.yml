@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a defect in the spec, schema, an SDK, or the docs.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Security vulnerabilities should **not** be filed
+        here — see [SECURITY.md](https://github.com/1ay1/rcp/blob/main/SECURITY.md).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of RCP is affected?
+      options:
+        - Specification (spec/rcp-1.0.md)
+        - Schema (schema/rcp-1.0.json)
+        - SDK — C++
+        - SDK — Python
+        - SDK — Node.js
+        - SDK — Rust
+        - Documentation site
+        - Conformance harness
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear description of the defect.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: What the spec/SDK should have done instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal steps, wire messages, or code to reproduce.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: RCP protocol version and/or SDK version + language toolchain.
+      placeholder: "RCP/1 · rust 1.92 · rcp-protocol 1.0.0"
