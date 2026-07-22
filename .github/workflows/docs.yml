@@ -30,6 +30,9 @@ jobs:
       - name: Sync schema into docs
         run: node scripts/sync-schema.mjs
         working-directory: docs
+      - name: Check config (fonts, assets, redirects)
+        run: node scripts/check-config.mjs
+        working-directory: docs
       - name: Check navigation resolves
         run: node scripts/check-nav.mjs
         working-directory: docs

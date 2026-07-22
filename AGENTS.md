@@ -50,6 +50,7 @@ comments.** When they disagree, fix the docs to match the code.
 ```
 cd docs
 node scripts/sync-schema.mjs   # copies schema/rcp-1.0.json into docs/schema/
+node scripts/check-config.mjs  # docs.json footguns: fonts, missing assets, redirects
 node scripts/check-nav.mjs     # every docs.json page resolves to a file
 node scripts/check-links.mjs   # no broken internal links
 node scripts/check-mdx.mjs     # balanced components, no stray { or < in prose
