@@ -68,6 +68,7 @@ Because `retrieve` is the workhorse, its metadata is richer:
     "levels": 3,
     "tokenBudget": true,
     "confidence": true,
+    "scoreScale": "cosine",
     "defaultMode": "hybrid"
 } }
 ```
@@ -98,6 +99,14 @@ Because `retrieve` is the workhorse, its metadata is richer:
 </ResponseField>
 <ResponseField name="confidence" type="boolean">
   Whether hits carry a normalised `[0,1]` `confidence`.
+</ResponseField>
+<ResponseField name="scoreScale" type="string">
+  The scale of `Hit.score` — one of `cosine`, `dot`, `bm25`, `probability`
+  (already `[0,1]`), or `unbounded` (engine-relative, e.g. raw BM25F). This is
+  **informational only**: it lets a client label or bucket scores, but it does
+  **not** make scores from different servers comparable. Cross-server ranking and
+  fusion **MUST** key on rank position or the normalised `confidence` — never raw
+  `score`. See [Retrieve](/methods/retrieve#scores-are-server-scaled).
 </ResponseField>
 
 ## Gating in practice

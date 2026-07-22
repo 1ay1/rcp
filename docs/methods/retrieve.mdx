@@ -206,6 +206,22 @@ sequenceDiagram
 - **`content`/`modality`** carry non-text bodies for visual-document and
   multimodal retrieval.
 
+## Scores are server-scaled
+
+`score` is the engine's **native** relevance number — cosine similarity, a dot
+product, raw BM25F, whatever the backend emits. Its scale is server-specific, so
+**two servers' `score` values are never directly comparable**, even if both look
+like "0.94". A server **MAY** advertise `retrieve.scoreScale`
+(`cosine` · `dot` · `bm25` · `probability` · `unbounded`) so a client can *label* or
+*bucket* scores — but that is informational, not a comparability promise.
+
+<Warning>
+For cross-server ranking or [rank fusion](/features/federation), key on **rank
+position** (RRF) or the normalised `[0,1]` **`confidence`** field — **never** raw
+`score`. `confidence` is defined to be comparable across calls precisely so that
+corrective/adaptive clients (CRAG, Self-RAG) can threshold on it; `score` is not.
+</Warning>
+
 ## The funnel invariant
 
 The three size knobs form a funnel and **MUST** satisfy `candidateK ≥

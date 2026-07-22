@@ -34,6 +34,9 @@ shared conformance runner.
   gating, batching, and error mapping — you write handlers.
 - A **`Selector`** for registry-driven [routing](/features/federation) with lazy
   connect and priority fallback.
+- A **`filter`** module — a typed [builder + server-side validator](/features/metadata-filtering#the-canonical-builder-validator)
+  for metadata filters, so clients never hand-write filter JSON and servers turn
+  a malformed tree into a clean `-32602` instead of a `-32603` crash.
 - Uniform errors surfaced as a typed error whose message is
   `"[RCP <code>] <message>"`, exposing `.code`, `.data`, `retryable()`.
 

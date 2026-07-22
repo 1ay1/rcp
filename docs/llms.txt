@@ -37,7 +37,7 @@
 
 ## Features
 
-- [Metadata filtering](https://rcp-6d6ef6d5.mintlify.site/features/metadata-filtering): Structured filter expressions over fields.
+- [Metadata filtering](https://rcp-6d6ef6d5.mintlify.site/features/metadata-filtering): Structured filter expressions over fields, with a canonical builder + server-side validator in every SDK.
 - [Streaming & progress](https://rcp-6d6ef6d5.mintlify.site/features/streaming-progress): Progress tokens and partial hits.
 - [Pagination](https://rcp-6d6ef6d5.mintlify.site/features/pagination): Cursor-based paging over large result sets.
 - [Batching](https://rcp-6d6ef6d5.mintlify.site/features/batching): JSON-RPC batching and inherently-batched array methods.

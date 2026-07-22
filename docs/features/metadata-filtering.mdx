@@ -68,3 +68,92 @@ string-concatenate. See [Security](/operating/security).
 Unless a server documents otherwise, string comparison is case-sensitive and
 byte-ordered.
 </Info>
+
+## The canonical builder & validator
+
+Every RCP SDK ships a first-class `filter` module so you **never hand-write the
+JSON**. It has two halves:
+
+- A **builder** — typed leaf constructors (`eq` `ne` `gt` `gte` `lt` `lte` `in_`
+  `nin` `contains` `exists`) and combinators (`all`/`any`/`not_`, with `&` `|` `~`
+  operator sugar) that make a malformed tree impossible to *construct*.
+- A **validator** — `validate(node, fields, operators)` that a **server** runs on
+  the untrusted incoming tree. It returns a normalized tree or a precise
+  `-32602` carrying `data.field`. It enforces field/operator authorization,
+  value-shape (array-vs-scalar), ordered-op-vs-type, combinator/leaf mixing, and
+  a nesting-depth DoS guard.
+
+<CodeGroup>
+```python Python
+from rcp import filter as f
+
+# client: build a tree
+tree = f.all_(f.eq("lang", "en"), f.gte("year", 2023)) | f.contains("tag", "news")
+params = {"query": "...", "filter": tree.to_json()}
+
+# server: validate the untrusted tree against what you advertised
+safe = f.validate(
+    incoming_filter,
+    fields={"lang": "keyword", "year": "int", "tag": "text"},
+    operators=["eq", "gte", "contains"],
+)  # -> normalized tree, or raises RcpError(-32602, data={"field": ...})
+```
+
+```javascript Node.js
+import { filter as f } from "rcp-protocol";
+
+// client
+const tree = f.any(
+  f.all(f.eq("lang", "en"), f.gte("year", 2023)),
+  f.contains("tag", "news"),
+);
+const params = { query: "...", filter: tree.toJSON() };
+
+// server
+const safe = f.validate(incoming, {
+  fields: { lang: "keyword", year: "int", tag: "text" },
+  operators: ["eq", "gte", "contains"],
+}); // -> normalized tree, or throws RcpError(-32602)
+```
+
+```rust Rust
+use rcp::filter;
+
+// client (& | ! operator sugar via std::ops)
+let tree = (filter::eq("lang", "en".into()) & filter::gte("year", 2023.into()))
+    | filter::contains("tag", "news".into());
+let params = obj(&[("query", "...".into()), ("filter", tree.to_json())]);
+
+// server
+let safe = filter::validate(
+    Some(&incoming),
+    Some(&[("lang", "keyword"), ("year", "int"), ("tag", "text")]),
+    Some(&["eq", "gte", "contains"]),
+    32, // max nesting depth (DoS guard)
+)?; // -> Ok(Some(normalized)) | Ok(None) if empty | Err(RcpError -32602)
+```
+
+```cpp C++
+#include <rcp/filter.hpp>
+using namespace rcp::filter;
+
+// client (&& || ! operator sugar)
+auto tree = (eq("lang", "en") && gte("year", 2023)) || contains("tag", "news");
+Json params = {{"query", "..."}, {"filter", tree.to_json()}};
+
+// server
+auto safe = validate(incoming,
+                     /*fields*/ {{"lang", "keyword"}, {"year", "int"}, {"tag", "text"}},
+                     /*operators*/ {"eq", "gte", "contains"});
+// -> Result<Json>: value is the normalized tree, error is Error{-32602, ...}
+```
+</CodeGroup>
+
+<Tip>
+Don't roll your own filter parser. A hand-written server parser turns a malformed
+tree into a generic `-32603` crash; the canonical `validate()` turns it into a
+clean, actionable `-32602` with `data.field` — and closes the security boundary
+above for free. The reference Whoosh adapter
+([`examples/whoosh_adapter.py`](https://github.com/1ay1/rcp/blob/main/examples/whoosh_adapter.py))
+calls `validate()` then compiles the *trusted* tree into engine queries.
+</Tip>

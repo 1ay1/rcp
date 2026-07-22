@@ -7,6 +7,28 @@ icon: clock-rotate-left
 RCP/1 is **stable**. Changes within the major version are additive and
 capability-discovered; the wire never breaks under you.
 
+<Update label="RCP/1 1.0 · robustness" description="2026 — distinctness & abstraction hardening">
+  Additive hardening driven by validating RCP against a real third-party engine
+  (a [Whoosh](https://github.com/1ay1/rcp/blob/main/examples/whoosh_adapter.py)
+  BM25F adapter). No wire break.
+
+  - **Why not an MCP tool?** — the spec and
+    [ecosystem docs](/ecosystem/mcp-acp) now argue RCP's distinctness on six axes
+    (negotiated pipeline, funnel invariant, structured comparable hits, rank
+    fusion, streaming, per-hit trust) plus a litmus test.
+  - **`retrieve.scoreScale`** — an optional capability
+    (`cosine`·`dot`·`bm25`·`probability`·`unbounded`) that *labels* the scale of
+    `Hit.score`. Normative rule: cross-server ranking/fusion **MUST** key on rank
+    or `confidence`, never raw `score`. See
+    [Retrieve](/methods/retrieve#scores-are-server-scaled).
+  - **Canonical filter builder + validator** in all four SDKs — a typed builder
+    (`eq`/`gte`/`in_`/… + `all`/`any`/`not_`) and a server-side `validate()` that
+    turns any malformed tree into a clean `-32602` with `data.field`. See
+    [Metadata filtering](/features/metadata-filtering#the-canonical-builder-validator).
+  - SDK **capability enums** gained the missing `filter`/`streaming`/`pagination`/`citations`/`log`
+    members (the JSON schema already had them).
+</Update>
+
 <Update label="RCP/1 1.0 · SOTA" description="2026 — agentic & frontier RAG coverage">
   Additive, fully backward-compatible coverage of 2024–2026 RAG frontiers — all
   gated behind **new optional capabilities** (absent ⇒ pre-existing behaviour,
