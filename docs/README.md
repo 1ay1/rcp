@@ -32,7 +32,7 @@ node scripts/sync-schema.mjs    # refresh docs/schema from the canonical schema
 
 - `docs.json` — Mintlify config: theme, colors, and the tab → group → page navigation.
 - `get-started/`, `concepts/`, `methods/`, `features/`, `operating/` — the Documentation tab.
-- `sdks/` — the SDKs tab (C++, Python, Node.js).
+- `sdks/` — the SDKs tab (C++, Python, Node.js, Rust).
 - `reference/`, `ecosystem/` — the Reference tab.
 - `schema/rcp-1.0.json` — the JSON Schema, served at `/schema/rcp-1.0.json` (synced from the repo root).
 - `logo/`, `favicon.svg`, `images/` — brand assets.
