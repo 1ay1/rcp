@@ -1,16 +1,19 @@
 [build-system]
-requires = ["setuptools>=64", "pybind11>=2.12"]
+requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "rcp-protocol"
 version = "1.0.0"
-description = "Retrieval Context Protocol — Python bindings over the type-theoretic C++ SDK"
+description = "Retrieval Context Protocol — native Python SDK (pure standard library, no dependencies)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "RCP Working Group" }]
 keywords = ["rcp", "rag", "retrieval", "protocol", "json-rpc", "mcp", "acp"]
+
+[tool.setuptools]
+packages = ["rcp"]
 
 [project.urls]
 Homepage = "https://1ay1.github.io/rcp/"

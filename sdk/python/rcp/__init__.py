@@ -1,9 +1,11 @@
-"""rcp — the Retrieval Context Protocol, Python SDK.
+"""rcp — the Retrieval Context Protocol, a native Python SDK.
 
-A thin, Pythonic layer over the type-theoretic C++ SDK (compiled native module
-`_rcp`). RCP is an open, versioned JSON-RPC protocol so any RAG engine — any
-language, any vendor — can expose embed/rerank/retrieve/graph/index, and any
-client can consume it uniformly.
+Pure Python, zero dependencies (standard library only): no compiler, no C++, no
+build step to ``pip install``. RCP is an open, versioned JSON-RPC protocol so any
+RAG engine — any language, any vendor — can expose embed / rerank / retrieve /
+graph / index / catalog, and any client can consume it uniformly. This SDK speaks
+the exact same wire format as the type-theoretic C++ SDK, so a Python client and
+a C++ server (or vice-versa) interoperate byte-for-byte.
 
 Client (connects to any RCP server, over a subprocess or HTTP):
 
@@ -28,63 +30,26 @@ Server (expose a Python RAG engine as an RCP server):
 
     s.serve_stdio()
 """
-from ._rcp import Client, Server as _Server, Capability, PROTOCOL_VERSION, Selector
+from ._client import Client
+from ._selector import EngineSpec, Selector
+from ._server import Server, make_log_notification, make_progress_notification
+from ._transport import HttpTransport, StdioTransport
+from ._types import (
+    PROTOCOL_VERSION,
+    Capability,
+    Errc,
+    Method,
+    RcpError,
+    negotiate_version,
+)
 
-__all__ = ["Client", "Server", "Selector", "Capability", "PROTOCOL_VERSION",
-           "Method", "Errc", "connect_stdio", "connect_http"]
+__all__ = [
+    "Client", "Server", "Selector", "EngineSpec", "Capability", "PROTOCOL_VERSION",
+    "Method", "Errc", "RcpError", "connect_stdio", "connect_http",
+    "make_log_notification", "make_progress_notification",
+    "StdioTransport", "HttpTransport", "negotiate_version",
+]
 __version__ = "1.0.0"
-
-
-class Method:
-    """RCP/1 method names (wire vocabulary, §7 of the spec)."""
-    INITIALIZE   = "initialize"
-    INFO         = "info"
-    EMBED        = "embed"
-    EMBED_SPARSE = "embed/sparse"
-    EMBED_MULTI  = "embed/multi"
-    RERANK       = "rerank"
-    RETRIEVE     = "retrieve"
-    TRANSFORM    = "query/transform"
-    GRAPH        = "graph"
-    INDEX_ADD    = "index/add"
-    INDEX_DELETE = "index/delete"
-    CATALOG_LIST = "catalog/list"
-    CANCEL       = "notifications/cancel"
-    PING         = "ping"
-    SHUTDOWN     = "shutdown"
-
-
-class Errc:
-    """RCP/1 error codes (§12). -326xx are JSON-RPC; -320xx are RCP-specific."""
-    PARSE_ERROR         = -32700
-    INVALID_REQUEST     = -32600
-    METHOD_NOT_FOUND    = -32601
-    INVALID_PARAMS      = -32602
-    INTERNAL_ERROR      = -32603
-    NOT_INITIALIZED     = -32001
-    VERSION_MISMATCH    = -32002
-    CAPABILITY_MISSING  = -32003
-    UNKNOWN_METHOD      = -32004
-    OPTION_UNSUPPORTED  = -32005
-    CANCELLED           = -32006
-    BACKEND_UNAVAILABLE = -32010
-    RATE_LIMITED        = -32011
-
-
-class Server(_Server):
-    """RCP server. `on(method)` doubles as a decorator:
-
-        @s.on("retrieve")
-        def _(params): ...
-    """
-
-    def on(self, method, fn=None):
-        if fn is None:
-            def deco(f):
-                super(Server, self).on(method, f)
-                return f
-            return deco
-        return super().on(method, fn)
 
 
 def connect_stdio(argv, **kwargs) -> Client:

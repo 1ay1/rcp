@@ -52,9 +52,10 @@ pagination — learn one, you know the shape of all three.
 
 ## SDKs
 
-RCP ships **one type-theoretic C++ SDK** with **Python bindings** layered over
-it (pybind11). Cross-language interop is proven by the test suite: a Python
-client drives a C++ server and vice versa.
+RCP ships **two SDKs** that speak the identical wire format: a **type-theoretic
+C++ SDK** (header-only) and a **native Python SDK** (pure standard library — no
+compiler, no dependencies, nothing to build). Cross-language interop is proven by
+the test suite: a Python client drives a C++ server and vice versa.
 
 The C++ SDK pushes protocol invariants into the type system, proved at **compile
 time**:
@@ -162,14 +163,11 @@ make test        # static_assert proofs + runtime checks
 make examples    # example_server / client / selector / federation
 ```
 
-**Python bindings:**
+**Python** (pure standard library — no compiler, no dependencies, no build step):
 
 ```sh
 cd sdk/python
-python -m venv .venv && . .venv/bin/activate
-pip install pybind11 setuptools
-python setup.py build_ext --inplace
-python test_bindings.py
+python3 test_bindings.py   # in-proc server + client↔C++ server + selector
 ```
 
 **Conformance** — validate any server, in any language:
@@ -184,7 +182,7 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 - `spec/rcp-1.0.md` — the normative specification (RFC-2119, JSON-RPC 2.0).
 - `schema/rcp-1.0.json` — JSON Schema (draft 2020-12) for every message shape.
 - `sdk/cpp/` — the type-theoretic C++ SDK (header-only) + examples + tests.
-- `sdk/python/` — pybind11 bindings and the `rcp` package.
+- `sdk/python/` — the native Python `rcp` package (standard library only).
 - `conformance/` — transport-agnostic conformance suite.
 - `examples/` — runnable Python client/server.
 - `site/` — the documentation website (Astro + Starlight), auto-deployed to

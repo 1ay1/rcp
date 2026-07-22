@@ -60,7 +60,9 @@ def build():
 
     @s.on(rcp.Method.EMBED)
     def _embed(params):
-        return {"vectors": [embed_one(t) for t in params.get("texts", [])], "dimensions": DIM}
+        # Accept `inputs` (preferred, spec §7.3) or the legacy `texts` synonym.
+        items = params.get("inputs") or params.get("texts", [])
+        return {"vectors": [embed_one(t) for t in items], "dimensions": DIM}
 
     @s.on(rcp.Method.RETRIEVE)
     def _retrieve(params):

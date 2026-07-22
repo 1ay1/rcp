@@ -1,4 +1,8 @@
-"""Smoke test for the Python RCP bindings: client + server + typestate gating."""
+"""Smoke test for the native Python RCP SDK: client + server + capability gating.
+
+Pure standard library — no compiled module. The ``client↔C++`` case proves
+cross-language interop against ``sdk/cpp/example_server`` when it is built.
+"""
 import os
 import sys
 
@@ -87,4 +91,4 @@ if __name__ == "__main__":
     test_server_handle_inproc()
     test_client_against_cpp_server()
     test_registry_selector()
-    print("\nall python binding checks passed")
+    print("\nall native Python SDK checks passed")

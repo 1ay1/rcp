@@ -1,13 +1,14 @@
 ---
 title: SDKs
-description: The type-theoretic C++23 SDK and its Python bindings.
+description: The type-theoretic C++23 SDK and the native Python SDK.
 sidebar:
   order: 1
 ---
 
-RCP ships **one type-theoretic C++ SDK** (header-only) with **Python bindings**
-layered over it via pybind11. Cross-language interop is proven by the test suite:
-a Python client drives a C++ server and vice versa.
+RCP ships **two SDKs** that speak the identical wire format: a **type-theoretic
+C++23 SDK** (header-only) and a **native Python SDK** (pure standard library — no
+compiler, no dependencies, nothing to build). Cross-language interop is proven by
+the test suite: a Python client drives a C++ server and vice versa.
 
 ## C++ — invariants in the type system
 
@@ -35,7 +36,12 @@ make examples    # example_server / client / selector / federation
 
 Requires a C++23 compiler with `std::expected` (GCC 13+ / recent Clang).
 
-## Python — pybind11 bindings
+## Python — native, standard library only
+
+The Python SDK is written entirely against the standard library (`json`,
+`subprocess`, `http.client`, `socket`) — no C++, no pybind11, no compiled
+extension. It mirrors the C++ SDK's public surface and wire behaviour, so the two
+interoperate byte-for-byte.
 
 ```python
 import rcp
@@ -54,10 +60,7 @@ s.serve_stdio()
 
 ```sh
 cd sdk/python
-python -m venv .venv && . .venv/bin/activate
-pip install pybind11 setuptools
-python setup.py build_ext --inplace
-python test_bindings.py
+python3 test_bindings.py   # pure stdlib — no build, no dependencies
 ```
 
 SDKs pass capability metadata as opaque JSON via `with_*({...})`, so new fields
