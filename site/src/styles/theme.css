@@ -87,9 +87,9 @@ h1, h2, h3, h4,
    ============================================================================ */
 body {
   background-image:
-    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--rcp-signal) 12%, transparent), transparent 55%),
-    radial-gradient(color-mix(in srgb, var(--sl-color-gray-4) 45%, transparent) 0.8px, transparent 0.8px);
-  background-size: 100% 620px, 22px 22px;
+    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--rcp-signal) 9%, transparent), transparent 50%),
+    radial-gradient(color-mix(in srgb, var(--sl-color-gray-4) 28%, transparent) 0.7px, transparent 0.7px);
+  background-size: 100% 560px, 28px 28px;
   background-repeat: no-repeat, repeat;
   background-attachment: fixed, fixed;
 }
@@ -114,16 +114,30 @@ body {
    ============================================================================ */
 .hero {
   position: relative;
+  padding-block: clamp(3rem, 8vw, 6rem) clamp(2rem, 5vw, 4rem);
 }
-.hero > img,
-.hero .hero-html img {
-  filter: drop-shadow(0 0 60px color-mix(in srgb, var(--rcp-signal) 45%, transparent));
+
+/* Single-column, left-aligned hero (no floating logo image). */
+.hero {
+  display: block;
 }
+.hero > .hero-html { display: none; }        /* hide the (now unused) image slot */
+.hero .stack {
+  max-width: 62ch;
+  margin-inline: auto;
+  align-items: flex-start;
+  text-align: left;
+}
+
+/* Badge leads the tagline block, styled as a small status chip. */
+.rcp-badge-br { display: block; height: 0.9rem; content: ""; }
+.hero .tagline .rcp-badge { display: inline-block; }
 
 .hero h1 {
   font-weight: 700;
-  font-size: clamp(2.6rem, 7vw, 4.6rem);
-  line-height: 0.98;
+  font-size: clamp(2.6rem, 6.5vw, 4.4rem);
+  line-height: 1.02;
+  margin: 0;
   background: var(--rcp-gradient);
   -webkit-background-clip: text;
   background-clip: text;
@@ -132,14 +146,23 @@ body {
 
 .hero .tagline {
   color: var(--sl-color-gray-2);
-  font-size: clamp(1.05rem, 2.4vw, 1.3rem);
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
   line-height: 1.55;
-  max-width: 42ch;
+  max-width: 54ch;
 }
-.hero .tagline b { color: var(--sl-color-white); }
+.hero .tagline b { color: var(--sl-color-white); font-weight: 600; }
 
-/* Action buttons */
-.hero .actions a[data-variant="primary"] {
+/* Action buttons — sharper radius, tighter, less "toy". */
+.hero .actions {
+  gap: 0.7rem;
+  margin-top: 0.5rem;
+}
+.hero .actions .sl-link-button {
+  border-radius: 8px;
+  font-size: 0.95rem;
+  padding: 0.62rem 1.2rem;
+}
+.hero .actions .sl-link-button.primary {
   background: var(--rcp-gradient);
   border: none;
   color: #06110f;
@@ -147,21 +170,23 @@ body {
   box-shadow: var(--rcp-glow);
   transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
 }
-.hero .actions a[data-variant="primary"]:hover {
+.hero .actions .sl-link-button.primary:hover {
   transform: translateY(-2px);
   filter: brightness(1.06);
   box-shadow: 0 0 0 1px rgba(23,230,195,0.3), 0 18px 48px -14px rgba(23,230,195,0.6);
 }
-.hero .actions a[data-variant="secondary"] {
-  border-color: color-mix(in srgb, var(--rcp-signal) 40%, transparent);
+.hero .actions .sl-link-button.secondary {
+  border: 1px solid color-mix(in srgb, var(--rcp-signal) 40%, transparent);
   color: var(--sl-color-white);
+  background: transparent;
   transition: background 0.16s ease, border-color 0.16s ease;
 }
-.hero .actions a[data-variant="secondary"]:hover {
+.hero .actions .sl-link-button.secondary:hover {
   background: color-mix(in srgb, var(--rcp-signal) 10%, transparent);
   border-color: var(--rcp-signal);
 }
-.hero .actions a[data-variant="minimal"]:hover { color: var(--sl-color-accent-high); }
+.hero .actions .sl-link-button.minimal { color: var(--sl-color-gray-2); }
+.hero .actions .sl-link-button.minimal:hover { color: var(--sl-color-accent-high); }
 
 /* ============================================================================
    Feature cards — sharper, with a top signal rule that lights on hover
@@ -232,20 +257,11 @@ body {
   border-inline-start-color: var(--rcp-signal);
 }
 
-/* Section headings get a small signal tick */
+/* Section headings get a subtle top rule (no colored tick — keeps it clean). */
 .sl-markdown-content h2 {
-  padding-top: 0.3em;
+  padding-top: 0.6em;
+  margin-top: 1.6em;
   border-top: 1px solid var(--sl-color-gray-5);
-}
-.sl-markdown-content h2::before {
-  content: "";
-  display: inline-block;
-  width: 0.55em;
-  height: 0.55em;
-  margin-right: 0.5em;
-  border-radius: 2px;
-  background: var(--rcp-gradient);
-  vertical-align: 0.08em;
 }
 
 /* ============================================================================
