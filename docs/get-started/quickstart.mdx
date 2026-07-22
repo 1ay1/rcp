@@ -1,20 +1,107 @@
 ---
 title: Quickstart
-description: Stand up an RCP engine and query it — in Python, Node.js, Rust, or C++ — in under five minutes.
+description: Run a real RCP engine, watch it answer a query, then write your own — no models to download, nothing to configure.
 icon: rocket
 ---
 
-RCP ships **four native SDKs** that speak the identical wire format: a header-only
-C++ SDK and dependency-free Python, Node.js, and Rust SDKs. Any client can drive
-any server — cross-language interop is proven by the test suites.
+RCP ships **four native SDKs** that speak the identical wire format: a
+header-only C++ SDK and dependency-free Python, Node.js, and Rust SDKs. This page
+takes you from zero to a working retrieval engine in two steps:
+
+<CardGroup cols={2}>
+  <Card title="1. See it run" icon="play" href="#see-it-run">
+    Clone the repo and query the reference engine. Real output in under a minute.
+  </Card>
+  <Card title="2. Write your own" icon="pen-to-square" href="#write-your-own-engine">
+    A complete, copy-paste engine you can run and then make real.
+  </Card>
+</CardGroup>
+
+<Note>
+You only need **Python 3** or **Node.js** installed — the reference engine is a
+toy in-memory index with no models, no vector database, and no network calls. It
+exists to show the *protocol*, not the retrieval math.
+</Note>
+
+## See it run
+
+The repo ships a complete example **server** (a tiny retrieval engine) and a
+**client** that drives it. Running the client spawns the server, performs the
+`initialize` handshake, discovers the server's capabilities, and calls three of
+them — all over plain JSON-RPC on stdio.
+
+<Steps>
+<Step title="Clone the repo">
+```sh
+git clone https://github.com/1ay1/rcp.git
+cd rcp
+```
+</Step>
+
+<Step title="Run the example client">
+<CodeGroup>
+```sh Python
+python3 examples/example_client.py
+```
+
+```sh Node.js
+node sdk/node/examples/example_client.js
+```
+</CodeGroup>
+</Step>
+
+<Step title="Read the output">
+```text
+connected to rcp-example v1.0.0 (RCP/1)
+capabilities: ['embed', 'retrieve', 'graph']
+embed      -> 1 vector(s), dim=384
+retrieve   ->
+   d1  score=0.248  The Eiffel Tower is a wrought-iron lattice tower
+   d2  score=0.135  Photosynthesis converts light energy into chemic
+graph      -> {'summary': 'a global community summary would go here', 'communities': 1}
+```
+
+That is a full RCP session. The client never imported the server's code — it
+only spoke the protocol. Swap the server for one backed by real embeddings and
+the client wouldn't change a line.
+</Step>
+</Steps>
+
+## Write your own engine
+
+An RCP **server** is just a program that advertises what it can do and answers
+method calls. Here is a complete engine backed by a three-document keyword index.
+It runs as-is; replace the body of `search` with real vector search and nothing
+else changes.
 
 <Tabs>
 <Tab title="Python">
 
 <Steps>
-<Step title="Write a server">
+<Step title="Save the engine as my_engine.py">
 ```python
+import re
 import rcp
+
+# A toy index: three documents ranked by keyword overlap.
+# Swap `search` for real vector search — the wire contract never changes.
+DOCS = [
+    ("d1", "The Eiffel Tower is a wrought-iron tower in Paris, France."),
+    ("d2", "Photosynthesis converts light into chemical energy in plants."),
+    ("d3", "Mount Everest is Earth's highest mountain above sea level."),
+]
+
+def toks(text):
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+def search(query, k):
+    q = toks(query)
+    ranked = sorted(DOCS, key=lambda d: len(q & toks(d[1])), reverse=True)
+    return [
+        {"id": doc_id, "score": float(len(q & toks(text))), "text": text}
+        for doc_id, text in ranked[:k]
+        if q & toks(text)
+    ]
 
 s = rcp.Server()
 s.set_info("my-engine", "1.0")
@@ -22,28 +109,32 @@ s.advertise(rcp.Capability.Retrieve, {"maxK": 100, "modes": ["hybrid"]})
 
 @s.on(rcp.Method.RETRIEVE)
 def _(params):
-    hits = my_index.search(params["query"], params.get("k", 10))
-    return {"hits": [{"id": h.id, "score": h.score, "text": h.text} for h in hits]}
+    return {"hits": search(params["query"], params.get("k", 10))}
 
 s.serve_stdio()
 ```
 </Step>
 
-<Step title="Drive it from a client">
+<Step title="Save a client as query.py">
 ```python
 import rcp
 
 c = rcp.connect_stdio(["python3", "my_engine.py"])
-if c.supports(rcp.Capability.Retrieve):
-    for h in c.retrieve("eiffel tower", k=3):
-        print(h["id"], h["score"])
+for h in c.retrieve("eiffel tower paris", k=3):
+    print(h["id"], round(h["score"]), h["text"])
 ```
 </Step>
 
-<Step title="Run the tests (pure stdlib — nothing to build)">
+<Step title="Run it">
+The SDK isn't on PyPI yet, so point Python at the copy in the repo (drop both
+files in the repo root):
+
 ```sh
-cd sdk/python
-python3 test_bindings.py
+PYTHONPATH=sdk/python python3 query.py
+```
+
+```text
+d1 3 The Eiffel Tower is a wrought-iron tower in Paris, France.
 ```
 </Step>
 </Steps>
@@ -52,123 +143,58 @@ python3 test_bindings.py
 <Tab title="Node.js">
 
 <Steps>
-<Step title="Write a server">
+<Step title="Save the engine as my_engine.mjs">
 ```js
-import * as rcp from "rcp-protocol";
+import * as rcp from "./sdk/node/src/index.js";
+
+// A toy index: three documents ranked by keyword overlap.
+// Swap `search` for real vector search — the wire contract never changes.
+const DOCS = [
+  ["d1", "The Eiffel Tower is a wrought-iron tower in Paris, France."],
+  ["d2", "Photosynthesis converts light into chemical energy in plants."],
+  ["d3", "Mount Everest is Earth's highest mountain above sea level."],
+];
+const toks = (s) => new Set(s.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+
+function search(query, k) {
+  const q = toks(query);
+  return DOCS
+    .map(([id, text]) => [[...toks(text)].filter((w) => q.has(w)).length, id, text])
+    .filter(([n]) => n > 0)
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, k)
+    .map(([n, id, text]) => ({ id, score: n, text }));
+}
 
 const s = new rcp.Server();
 s.setInfo("my-engine", "1.0");
 s.advertise(rcp.Capability.Retrieve, { maxK: 100, modes: ["hybrid"] });
-
-s.on(rcp.Method.RETRIEVE, async (params) => {
-  const hits = await myIndex.search(params.query, params.k ?? 10);
-  return { hits: hits.map((h) => ({ id: h.id, score: h.score, text: h.text })) };
-});
-
+s.on(rcp.Method.RETRIEVE, (params) => ({ hits: search(params.query, params.k ?? 10) }));
 await s.serveStdio();
 ```
 </Step>
 
-<Step title="Drive it from a client">
+<Step title="Save a client as query.mjs">
 ```js
-import * as rcp from "rcp-protocol";
+import * as rcp from "./sdk/node/src/index.js";
 
-const c = await rcp.connectStdio(["node", "my_engine.js"]);
-if (c.supports(rcp.Capability.Retrieve))
-  for (const h of await c.retrieve("eiffel tower", 3))
-    console.log(h.id, h.score);
+const c = await rcp.connectStdio(["node", "my_engine.mjs"]);
+for (const h of await c.retrieve("eiffel tower paris", 3))
+  console.log(h.id, h.score, h.text);
+await c.shutdown();
 ```
 </Step>
 
-<Step title="Run the tests (zero dependencies)">
+<Step title="Run it">
+The SDK isn't on npm yet, so import it from the repo (drop both files in the
+repo root and run from there):
+
 ```sh
-cd sdk/node
-node test.js
+node query.mjs
 ```
-</Step>
-</Steps>
 
-</Tab>
-<Tab title="C++">
-
-<Steps>
-<Step title="Write a handler">
-```cpp
-#include "rcp.hpp"
-using namespace rcp;
-
-struct Engine {
-    PeerInfo info() const { return {"my-engine", "1.0"}; }
-    Capabilities capabilities() const {
-        return Capabilities{}.with_retrieve({{"maxK", 100}});
-    }
-    Result<Json> retrieve(const Json& p) {
-        return Json{{"hits", my_index.search(p.at("query"), p.value("k", 10))}};
-    }
-};
-
-int main() { Server{Engine{}}.serve_stdio(); }
-```
-</Step>
-
-<Step title="Build (header-only, C++23)">
-```sh
-cd sdk/cpp
-make test        # static_assert proofs + runtime checks
-make examples    # example_server / client / selector / federation
-```
-</Step>
-
-<Step title="Validate against the conformance suite">
-```sh
-python3 conformance/check.py -- ./sdk/cpp/example_server
-```
-</Step>
-</Steps>
-
-</Tab>
-<Tab title="Rust">
-
-<Steps>
-<Step title="Write a server">
-```rust
-use rcp::{obj, Capability, Method, Server};
-
-fn main() {
-    let mut s = Server::new();
-    s.set_info("my-engine", "1.0");
-    s.advertise(Capability::Retrieve, obj(&[("maxK", 100.into())]));
-
-    s.on(Method::RETRIEVE, |params| {
-        let q = params.get_str("query").unwrap_or("");
-        Ok(obj(&[("hits", my_index_search(q))]))
-    });
-
-    s.serve_stdio();
-}
-```
-</Step>
-
-<Step title="Drive it from a client">
-```rust
-use rcp::Capability;
-
-fn main() -> Result<(), rcp::RcpError> {
-    let mut c = rcp::connect_stdio(&["my_engine"])?;
-    if c.supports(Capability::Retrieve) {
-        for h in c.retrieve("eiffel tower", 3)? {
-            println!("{} {}", h.id, h.score);
-        }
-    }
-    Ok(())
-}
-```
-</Step>
-
-<Step title="Run the tests (zero dependencies)">
-```sh
-cd sdk/rust
-cargo test
+```text
+d1 3 The Eiffel Tower is a wrought-iron tower in Paris, France.
 ```
 </Step>
 </Steps>
@@ -176,10 +202,53 @@ cargo test
 </Tab>
 </Tabs>
 
-<Tip>
-The reference example servers each pass the conformance suite **10/10** over both
-stdio and HTTP, and every client drives every server across languages.
-</Tip>
+<Note>
+**Rust and C++ follow the identical shape** — `Server::new()`, advertise a
+capability, register a handler, `serve_stdio()`. Complete, compiler-verified
+engines live at `sdk/rust/examples/example_server.rs` and
+`sdk/cpp/examples/example_server.cpp`; the [Rust](/sdks/rust) and
+[C++](/sdks/cpp) SDK pages walk through them.
+</Note>
+
+## What just happened
+
+Every RCP session is the same three beats, in every language:
+
+<Steps>
+  <Step title="Initialize" icon="handshake">
+    The client connects and sends `initialize`. The server replies with the
+    negotiated protocol version, its name, and its **capabilities** — the exact
+    set of things it can do. See [Initialization](/concepts/initialization).
+  </Step>
+  <Step title="Gate on capabilities" icon="filter">
+    The client checks a capability (`c.supports(...)`) before calling a method.
+    Calling an unadvertised capability fails **client-side, before any I/O** —
+    no wasted round trip. See [Capabilities](/concepts/capabilities).
+  </Step>
+  <Step title="Call methods" icon="bolt">
+    The client calls capability-gated methods like `retrieve` and reads back
+    normalized hits. The server ran whatever pipeline it wanted behind that one
+    call. See [the retrieval pipeline](/concepts/pipeline).
+  </Step>
+</Steps>
+
+Notice what the client *didn't* do: it didn't know the server's language, its
+index, or its ranking math. It only spoke the wire. That decoupling is the whole
+point — read [Why RCP](/get-started/introduction) for the motivation.
+
+## Installing the SDK
+
+RCP is young and the SDKs are distributed from source today (registry publishing
+to PyPI, npm, crates.io, and vcpkg is planned):
+
+| SDK | Today |
+|-----|-------|
+| **Python** | `PYTHONPATH=sdk/python`, or copy the `sdk/python/rcp` package into your project. |
+| **Node.js** | Import `sdk/node/src/index.js`, or `npm install /path/to/rcp/sdk/node`. |
+| **Rust** | `rcp-protocol = { path = "sdk/rust" }` (or a git dependency) in `Cargo.toml`. |
+| **C++** | Header-only: add `sdk/cpp/include` to your include path (needs C++23). |
+
+Each [SDK page](/sdks/overview) has the full install and API details.
 
 ## Where to go next
 
@@ -187,13 +256,13 @@ stdio and HTTP, and every client drives every server across languages.
   <Card title="The method set" icon="list" href="/methods/overview">
     Every method at a glance, and the capability that gates it.
   </Card>
+  <Card title="Core concepts" icon="book-open" href="/concepts/message-format">
+    The wire format, capabilities, and errors — one concept per page.
+  </Card>
   <Card title="Federation & Selector" icon="diagram-project" href="/features/federation">
     Target one engine or fuse many from a single registry.
   </Card>
   <Card title="SDKs" icon="code" href="/sdks/overview">
     The full API of each native SDK.
-  </Card>
-  <Card title="Specification" icon="book" href="/reference/specification">
-    The complete normative document.
   </Card>
 </CardGroup>

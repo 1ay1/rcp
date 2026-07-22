@@ -12,6 +12,26 @@ base means rewriting glue code. MCP standardised *tools*; ACP standardised
 **RCP is that layer** — a small, versioned, JSON-RPC 2.0 contract that a
 *powerful* engine can fully express and a *thin* client can fully consume.
 
+<Accordion title="New to retrieval or RAG? Start here" icon="seedling">
+  **Retrieval-augmented generation (RAG)** grounds a language model in *your*
+  data instead of relying only on what it memorised in training. The loop is
+  almost always the same four steps:
+
+  1. **Embed** — turn text into a vector so that passages with similar meaning
+     land near each other in space.
+  2. **Retrieve** — given a query, find the nearest passages (by dense vectors,
+     sparse keywords, or a **hybrid** of both).
+  3. **Rerank** — re-score just the top handful with a slower, more accurate
+     model, so the best passage rises to the top.
+  4. **Cite** — return the winning passages *with their sources*, so whatever
+     the model writes next is grounded and checkable.
+
+  RCP is simply the **standard wire for that loop**: a client asks an engine to
+  embed / retrieve / rerank / cite, and any engine — in any language — can
+  answer. You don't need to know the underlying math to use it; every term above
+  is defined in the [glossary](/reference/glossary).
+</Accordion>
+
 <Note>
   RCP is **transport-free** and **language-agnostic**. A server is any process
   that reads newline-delimited JSON on stdio or accepts HTTP POSTs. A client is
