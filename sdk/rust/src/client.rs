@@ -12,14 +12,25 @@ use crate::types::{
     Capability, Errc, Method, RcpError, MIN_PROTOCOL_VERSION, PROTOCOL_VERSION,
 };
 
-/// One retrieval hit, normalised to `{ id, score, text, citation? }` (id coerced
-/// to a string, extra fields dropped) — the canonical shape across SDKs.
+/// One retrieval hit. `id`/`score`/`text` are always present (id coerced to a
+/// string); every optional spec §7.7 field is surfaced when the server sent it —
+/// `confidence` (normalised [0,1]), `unit`/`level` (granularity & abstraction),
+/// `provenance` (graph/tree lineage), `trust` (provenance + safety), and
+/// per-stage `scores`. `raw` is the untouched JSON object for anything else.
 #[derive(Clone, Debug)]
 pub struct Hit {
     pub id: String,
     pub score: f64,
     pub text: String,
     pub citation: Option<Json>,
+    pub confidence: Option<f64>,
+    pub unit: Option<String>,
+    pub level: Option<i64>,
+    pub modality: Option<String>,
+    pub scores: Option<Json>,
+    pub provenance: Option<Json>,
+    pub trust: Option<Json>,
+    pub raw: Json,
 }
 
 /// The full result of `search`: hits plus telemetry and an optional page cursor.
@@ -36,11 +47,20 @@ fn hit_from_json(h: &Json) -> Hit {
         Some(other) => other.dump(),
         None => String::new(),
     };
+    let opt = |k: &str| h.get(k).filter(|v| !v.is_null()).cloned();
     Hit {
         id,
         score: h.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0),
         text: h.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        citation: h.get("citation").filter(|c| !c.is_null()).cloned(),
+        citation: opt("citation"),
+        confidence: h.get("confidence").and_then(|v| v.as_f64()),
+        unit: h.get("unit").and_then(|v| v.as_str()).map(str::to_string),
+        level: h.get("level").and_then(|v| v.as_i64()),
+        modality: h.get("modality").and_then(|v| v.as_str()).map(str::to_string),
+        scores: opt("scores"),
+        provenance: opt("provenance"),
+        trust: opt("trust"),
+        raw: h.clone(),
     }
 }
 
@@ -215,6 +235,42 @@ impl Client {
     pub fn catalog(&mut self) -> Result<Json, RcpError> {
         self.gate(Capability::Catalog)?;
         self.request(Method::CATALOG_LIST, Json::object())
+    }
+
+    /// Send client→server relevance/reward/integrity signals (spec §7.16). Each
+    /// signal REQUIRES `hitId`. Returns `{ accepted }`; side-effect only.
+    pub fn feedback(&mut self, signals: Vec<Json>, opts: Option<Json>) -> Result<Json, RcpError> {
+        self.gate(Capability::Feedback)?;
+        for s in &signals {
+            if s.get("hitId").filter(|v| !v.is_null()).is_none() {
+                return Err(RcpError::new(
+                    Errc::INVALID_PARAMS,
+                    "each feedback signal requires 'hitId'",
+                ));
+            }
+        }
+        let mut p = opts.unwrap_or_else(Json::object);
+        p.insert("signals", Json::Array(signals));
+        self.request(Method::FEEDBACK, p)
+    }
+
+    /// Build or update a global/session memory (spec §7.17) → `{ memoryId, tokens? }`.
+    pub fn memory_build(&mut self, params: Option<Json>) -> Result<Json, RcpError> {
+        self.gate(Capability::Memory)?;
+        self.request(Method::MEMORY_BUILD, params.unwrap_or_else(Json::object))
+    }
+
+    /// Recall clues / entry-points from a memory (spec §7.17) → `{ clues, hits? }`.
+    pub fn memory_recall(&mut self, query: &str, opts: Option<Json>) -> Result<Json, RcpError> {
+        self.gate(Capability::Memory)?;
+        if let Some(n) = opts.as_ref().and_then(|o| o.get("n")).and_then(|v| v.as_i64()) {
+            if n < 1 {
+                return Err(RcpError::new(Errc::INVALID_PARAMS, "value must be >= 1"));
+            }
+        }
+        let mut p = opts.unwrap_or_else(Json::object);
+        p.insert("query", query);
+        self.request(Method::MEMORY_RECALL, p)
     }
 
     /// Re-fetch identity + capabilities without re-initialising.

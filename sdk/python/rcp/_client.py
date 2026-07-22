@@ -26,16 +26,28 @@ from ._types import (
 _CLIENT_INFO = {"name": "rcp-python", "version": "1.0"}
 
 
+# Optional Hit fields (spec §7.7) preserved verbatim when present, so agentic /
+# graph / eval clients see confidence, granularity, provenance, and trust rather
+# than a lossy {id,score,text}. Order is cosmetic; presence is what matters.
+_HIT_PASSTHROUGH = (
+    "citation", "confidence", "unit", "level", "modality", "content",
+    "scores", "provenance", "trust", "meta", "vector", "chunk",
+)
+
+
 def _hit_to_dict(h) -> dict:
-    """Normalise one retrieval Hit to ``{id, score, text[, citation]}`` — the
-    canonical hit shape (id coerced to str, extra fields dropped)."""
+    """Normalise one retrieval Hit to a dict that ALWAYS has ``{id, score, text}``
+    (id coerced to str) and additionally preserves every optional spec §7.7 field
+    that was present (confidence, unit, level, provenance, trust, scores, ...).
+    Non-dict inputs degrade to a text-only hit."""
     if not isinstance(h, dict):
         return {"id": "", "score": 0.0, "text": str(h)}
     raw_id = h.get("id", "")
     hit_id = raw_id if isinstance(raw_id, str) else json.dumps(raw_id, separators=(",", ":"))
     out = {"id": hit_id, "score": float(h.get("score", 0.0)), "text": h.get("text", "")}
-    if h.get("citation") is not None:
-        out["citation"] = h["citation"]
+    for key in _HIT_PASSTHROUGH:
+        if h.get(key) is not None:
+            out[key] = h[key]
     return out
 
 
@@ -167,6 +179,55 @@ class Client:
         """List available sub-indexes / collections (spec §7.12)."""
         self._gate(Capability.Catalog)
         return self._request(Method.CATALOG_LIST, {})
+
+    def feedback(self, signals, query=None, session_id=None):
+        """Send client→server relevance/reward/integrity signals (spec §7.16).
+
+        ``signals`` is a list of dicts, each REQUIRING ``hitId`` and carrying any
+        of ``used``/``cited``/``helpful``/``reward``/``poisonSuspected``/
+        ``injectionSuspected``. Returns ``{accepted: int}``. Side-effect only —
+        never alters a concurrent retrieve."""
+        self._gate(Capability.Feedback)
+        signals = list(signals)
+        for s in signals:
+            if not isinstance(s, dict) or "hitId" not in s:
+                raise RcpError(Errc.INVALID_PARAMS, "each feedback signal requires 'hitId'")
+        p = {"signals": signals}
+        if query is not None:
+            p["query"] = query
+        if session_id is not None:
+            p["sessionId"] = session_id
+        return self._request(Method.FEEDBACK, p)
+
+    def memory_build(self, documents=None, memory_id=None, scope=None):
+        """Build or update a global/session memory (spec §7.17). Omit ``documents``
+        to build over the live index; pass ``memory_id`` to update an existing
+        memory. Returns ``{memoryId, tokens?}``."""
+        self._gate(Capability.Memory)
+        p = {}
+        if documents is not None:
+            p["documents"] = list(documents)
+        if memory_id is not None:
+            p["memoryId"] = memory_id
+        if scope is not None:
+            p["scope"] = scope
+        return self._request(Method.MEMORY_BUILD, p)
+
+    def memory_recall(self, query, memory_id=None, session_id=None, n=None):
+        """Recall clues / entry-points from a memory (spec §7.17). Returns
+        ``{clues: [...], hits?: [...]}``; feed clues into :meth:`search` /
+        :meth:`graph`."""
+        self._gate(Capability.Memory)
+        p = {"query": query}
+        if memory_id is not None:
+            p["memoryId"] = memory_id
+        if session_id is not None:
+            p["sessionId"] = session_id
+        if n is not None:
+            if n < 1:
+                raise RcpError(Errc.INVALID_PARAMS, "value must be >= 1")
+            p["n"] = n
+        return self._request(Method.MEMORY_RECALL, p)
 
     def info(self):
         """Re-fetch server identity + capabilities without re-initialising."""

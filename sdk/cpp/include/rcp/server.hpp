@@ -69,6 +69,9 @@ template <class H> concept HasTransform    = requires(H& h, const Json& p) { { h
 template <class H> concept HasGraph        = requires(H& h, const Json& p) { { h.graph(p) }        -> std::same_as<Result<Json>>; };
 template <class H> concept HasIndexAdd     = requires(H& h, const Json& p) { { h.index_add(p) }    -> std::same_as<Result<Json>>; };
 template <class H> concept HasIndexDelete  = requires(H& h, const Json& p) { { h.index_delete(p) } -> std::same_as<Result<Json>>; };
+template <class H> concept HasFeedback     = requires(H& h, const Json& p) { { h.feedback(p) }     -> std::same_as<Result<Json>>; };
+template <class H> concept HasMemoryBuild  = requires(H& h, const Json& p) { { h.memory_build(p) } -> std::same_as<Result<Json>>; };
+template <class H> concept HasMemoryRecall = requires(H& h, const Json& p) { { h.memory_recall(p) }-> std::same_as<Result<Json>>; };
 template <class H> concept HasCatalog      = requires(H& h, const Json& p) { { h.catalog(p) }      -> std::same_as<Result<Json>>; };
 
 template <class H>
@@ -257,6 +260,18 @@ private:
         if (m == method::IndexDelete) {
             if constexpr (HasIndexDelete<H>) return run(Capability::Index,       [&]{ return handler_.index_delete(params); });
             else                             return err(id, errc::CapabilityMissing, "index not implemented");
+        }
+        if (m == method::Feedback) {
+            if constexpr (HasFeedback<H>)    return run(Capability::Feedback,    [&]{ return handler_.feedback(params); });
+            else                             return err(id, errc::CapabilityMissing, "feedback not implemented");
+        }
+        if (m == method::MemoryBuild) {
+            if constexpr (HasMemoryBuild<H>) return run(Capability::Memory,      [&]{ return handler_.memory_build(params); });
+            else                             return err(id, errc::CapabilityMissing, "memory not implemented");
+        }
+        if (m == method::MemoryRecall) {
+            if constexpr (HasMemoryRecall<H>) return run(Capability::Memory,     [&]{ return handler_.memory_recall(params); });
+            else                             return err(id, errc::CapabilityMissing, "memory not implemented");
         }
         if (m == method::Catalog) {
             if constexpr (HasCatalog<H>)     return run(Capability::Catalog,     [&]{ return handler_.catalog(params); });

@@ -73,6 +73,19 @@ int main() {
 A call to an unadvertised capability fails fast, client-side, before any I/O:
 its `Result` holds an `Error` with `code == errc::CapabilityMissing` (-32003).
 
+### Agentic & frontier RAG
+
+The full 2024–2026 RAG surface is typed. `retrieve`/`search` opts carry `unit` /
+`level` (granularity), `tokenBudget` (long-context packing), and `sessionId`
+(agentic trajectories); each `Hit` surfaces `confidence` (`std::optional<double>`,
+normalised [0,1]), `unit`, `level`, `scores`, `provenance`, and `trust`.
+`cli->feedback(signals)` sends RL / corrective / integrity signals back
+(spec §7.16), and `cli->memory_build(...)` / `cli->memory_recall(query)` drive
+MemoRAG / HippoRAG memory → clues (spec §7.17). A server opts in by advertising
+`with_session()` / `with_feedback()` / `with_memory()` and implementing the
+`feedback` / `memory_build` / `memory_recall` hooks — each detected at compile
+time by the `Handler` concept.
+
 ## Server
 
 A server is a **handler struct** that models the `Handler` concept: `info()`,

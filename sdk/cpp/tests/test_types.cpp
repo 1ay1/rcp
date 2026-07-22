@@ -43,6 +43,36 @@ static_assert(!Handler<int>);
 static_assert(HasRetrieve<MiniHandler>);
 static_assert(!HasEmbed<MiniHandler>);
 
+// A handler that also implements the agentic surfaces (feedback + memory). The
+// concepts must detect exactly the hooks it defines.
+struct AgenticHandler {
+    PeerInfo info() const { return {"agentic", "1"}; }
+    Capabilities capabilities() const {
+        return Capabilities{}.with_retrieve(50, {"hybrid"}).with_session().with_feedback()
+                             .with_memory({"global"}, true);
+    }
+    Result<Json> retrieve(const Json& p) {
+        return Json{{"hits", Json::array({Json{{"id", 42}, {"score", 0.9},
+                                               {"confidence", 0.83}, {"unit", p.value("unit", "chunk")},
+                                               {"level", 2},
+                                               {"provenance", {{"path", Json::array({"e:a", "e:b"})}}},
+                                               {"scores", {{"dense", 0.7}}}}})}};
+    }
+    Result<Json> feedback(const Json& p) {
+        return Json{{"accepted", p.contains("signals") ? p["signals"].size() : 0}};
+    }
+    Result<Json> memory_build(const Json&) { return Json{{"memoryId", "mem-1"}, {"tokens", 2048}}; }
+    Result<Json> memory_recall(const Json&) {
+        return Json{{"clues", Json::array({Json{{"query", "sub-q"}, {"seedIds", Json::array({"e:a"})}}})}};
+    }
+};
+static_assert(Handler<AgenticHandler>);
+static_assert(HasFeedback<AgenticHandler>);
+static_assert(HasMemoryBuild<AgenticHandler>);
+static_assert(HasMemoryRecall<AgenticHandler>);
+static_assert(!HasFeedback<MiniHandler>);   // MiniHandler defines no feedback hook
+static_assert(!HasMemoryBuild<MiniHandler>);
+
 // A scripted in-memory transport: answers the handshake with a fixed capability
 // set and each method with a canned result or error — lets us drive a real
 // Client (connect → gate → parse) with no subprocess.
@@ -115,6 +145,31 @@ int main() {
     CHECK(h.modality == "image");
     CHECK(h.trust["level"] == "untrusted");
     CHECK(h.content.is_array());
+
+    // Hit parses the agentic/graph/eval fields (§7.7.2): confidence, unit, level,
+    // provenance, and per-stage scores.
+    Hit ha = Hit::from_json(Json{{"id", 42}, {"score", 0.9}, {"confidence", 0.83},
+                                 {"unit", "tree-node"}, {"level", 2},
+                                 {"provenance", {{"path", Json::array({"e:a", "e:b"})}}},
+                                 {"scores", {{"dense", 0.7}, {"rerank", 0.9}}}});
+    CHECK(ha.id == "42");                       // non-string id coerced to string
+    CHECK(ha.confidence.has_value() && *ha.confidence == 0.83);
+    CHECK(ha.unit == "tree-node");
+    CHECK(ha.level.has_value() && *ha.level == 2);
+    CHECK(ha.provenance["path"][0] == "e:a");
+    CHECK(ha.scores["dense"] == 0.7);
+    // A hit with none of the optional fields leaves them empty/nullopt.
+    Hit hb = Hit::from_json(Json{{"id", "x"}, {"score", 0.1}});
+    CHECK(!hb.confidence.has_value() && !hb.level.has_value() && hb.unit.empty());
+
+    // session/feedback/memory capabilities round-trip (presence ⇒ supported).
+    Capabilities acaps;
+    acaps.with_session().with_feedback().with_memory({"global", "session"}, true);
+    auto aback = Capabilities::from_json(acaps.to_json());
+    CHECK(aback.has(Capability::Session));
+    CHECK(aback.has(Capability::Feedback));
+    CHECK(aback.has(Capability::Memory));
+    CHECK(acaps.to_json()["memory"]["scopes"][1] == "session");
 
     // log notification helper is well-formed (§17.1).
     auto logline = make_log_notification("info", "reranked 100→30", Json{{"latencyMs", 42}});
@@ -234,6 +289,31 @@ int main() {
         CHECK(tr.error().code == errc::RateLimited);
         CHECK(tr.error().retryable() && tr.error().retry_after_ms() == 250);
     }
+
+    // ── AgenticHandler: feedback + memory dispatch, gating, hit fields. ──
+    Server<AgenticHandler> asrv{AgenticHandler{}};
+    (void)asrv.handle(Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "initialize"}, {"params", {{"protocolVersion", 1}}}});
+
+    auto aret = asrv.handle(Json{{"jsonrpc", "2.0"}, {"id", 2}, {"method", "retrieve"},
+                                 {"params", {{"query", "q"}, {"k", 1}, {"unit", "tree-node"}}}});
+    CHECK(aret["result"]["hits"][0]["confidence"] == 0.83);
+    CHECK(aret["result"]["hits"][0]["unit"] == "tree-node");
+
+    auto afb = asrv.handle(Json{{"jsonrpc", "2.0"}, {"id", 3}, {"method", "feedback"},
+                                {"params", {{"signals", Json::array({Json{{"hitId", "42"}, {"used", true}}})}}}});
+    CHECK(afb["result"]["accepted"] == 1);
+
+    auto amb = asrv.handle(Json{{"jsonrpc", "2.0"}, {"id", 4}, {"method", "memory/build"}, {"params", {{"scope", "global"}}}});
+    CHECK(amb["result"]["memoryId"] == "mem-1");
+
+    auto amr = asrv.handle(Json{{"jsonrpc", "2.0"}, {"id", 5}, {"method", "memory/recall"}, {"params", {{"query", "q"}}}});
+    CHECK(amr["result"]["clues"][0]["seedIds"][0] == "e:a");
+
+    // MiniHandler advertises none of these → CapabilityMissing (not UnknownMethod:
+    // the method is known to the protocol, just unimplemented/unadvertised).
+    (void)srv.handle(Json{{"jsonrpc", "2.0"}, {"id", 30}, {"method", "initialize"}, {"params", {{"protocolVersion", 1}}}});
+    auto miss = srv.handle(Json{{"jsonrpc", "2.0"}, {"id", 31}, {"method", "memory/recall"}, {"params", {{"query", "q"}}}});
+    CHECK(miss["error"]["code"] == errc::CapabilityMissing);
 
     if (g_fail == 0) std::printf("all type + runtime checks passed\n");
     return g_fail == 0 ? 0 : 1;

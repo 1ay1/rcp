@@ -59,7 +59,30 @@ except rcp.RcpError as e:
 
 Client methods: `embed`, `embed_sparse`, `embed_multi`, `rerank`, `retrieve`,
 `search` (returns `hits` + `usage` + `nextCursor`), `graph`, `transform`,
-`index_add`, `index_delete`, `catalog`, `info`, `ping`, `call`, `shutdown`.
+`index_add`, `index_delete`, `feedback`, `memory_build`, `memory_recall`,
+`catalog`, `info`, `ping`, `call`, `shutdown`.
+
+### Agentic & frontier RAG
+
+The SDK carries the full spec surface for 2024–2026 RAG. `retrieve` accepts
+`unit` / `level` (granularity — chunk…subgraph…tree-node), `tokenBudget`
+(long-context packing), and `sessionId` (agentic trajectories) in its `opts`, and
+each returned hit preserves `confidence` (normalised [0,1]), `unit` / `level`,
+`provenance` (graph/tree lineage), `trust` (provenance + safety), and per-stage
+`scores`. Two dedicated methods complete the loop:
+
+```python
+# RL / corrective / integrity signals back to the retriever (spec §7.16)
+c.feedback([{"hitId": hit["id"], "used": True, "cited": True, "reward": 0.9}])
+
+# MemoRAG / HippoRAG memory -> clues you fan out over retrieve/graph (spec §7.17)
+mem = c.memory_build(scope="global")
+for clue in c.memory_recall("my question", memory_id=mem["memoryId"])["clues"]:
+    hits = c.retrieve(clue.get("query", ""), k=5, opts={"sessionId": "traj-1"})
+```
+
+Each surface is capability-gated (`Capability.Feedback`, `Capability.Memory`,
+`Capability.Session`) — a server that never advertised it fails fast, client-side.
 
 ## Server
 

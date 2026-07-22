@@ -64,8 +64,19 @@ match c.rerank("q", &["a", "b"]) {
 
 Client methods: `embed`, `embed_sparse`, `embed_multi`, `rerank`, `retrieve`,
 `search` (returns `SearchResult { hits, usage, next_cursor }`), `graph`,
-`transform`, `index_add`, `index_delete`, `catalog`, `info`, `ping`, `call`,
-`shutdown`.
+`transform`, `index_add`, `index_delete`, `feedback`, `memory_build`,
+`memory_recall`, `catalog`, `info`, `ping`, `call`, `shutdown`.
+
+### Agentic & frontier RAG
+
+The full 2024–2026 RAG surface is typed. `retrieve` opts carry `unit` / `level`
+(granularity), `tokenBudget` (long-context packing), and `sessionId` (agentic
+trajectories); each `Hit` surfaces `confidence`, `unit`, `level`, `scores`,
+`provenance`, and `trust` (plus `raw` for anything else). `feedback` sends
+RL / corrective / integrity signals back to the retriever (spec §7.16), and
+`memory_build` / `memory_recall` drive MemoRAG / HippoRAG memory → clues
+(spec §7.17). All three are capability-gated (`Capability::Feedback`,
+`Capability::Memory`, `Capability::Session`).
 
 ## Server
 

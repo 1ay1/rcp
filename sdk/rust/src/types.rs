@@ -30,6 +30,9 @@ pub enum Capability {
     Transform,
     Graph,
     Index,
+    Session,
+    Feedback,
+    Memory,
     Catalog,
 }
 
@@ -45,12 +48,15 @@ impl Capability {
             Capability::Transform => "transform",
             Capability::Graph => "graph",
             Capability::Index => "index",
+            Capability::Session => "session",
+            Capability::Feedback => "feedback",
+            Capability::Memory => "memory",
             Capability::Catalog => "catalog",
         }
     }
 
     /// Every capability, for iteration.
-    pub const ALL: [Capability; 9] = [
+    pub const ALL: [Capability; 12] = [
         Capability::Embed,
         Capability::SparseEmbed,
         Capability::MultiVector,
@@ -59,6 +65,9 @@ impl Capability {
         Capability::Transform,
         Capability::Graph,
         Capability::Index,
+        Capability::Session,
+        Capability::Feedback,
+        Capability::Memory,
         Capability::Catalog,
     ];
 }
@@ -79,6 +88,9 @@ impl Method {
     pub const GRAPH: &'static str = "graph";
     pub const INDEX_ADD: &'static str = "index/add";
     pub const INDEX_DELETE: &'static str = "index/delete";
+    pub const FEEDBACK: &'static str = "feedback";
+    pub const MEMORY_BUILD: &'static str = "memory/build";
+    pub const MEMORY_RECALL: &'static str = "memory/recall";
     pub const CATALOG_LIST: &'static str = "catalog/list";
     pub const CANCEL: &'static str = "notifications/cancel";
     pub const PROGRESS: &'static str = "notifications/progress";
@@ -187,6 +199,8 @@ pub fn cap_for_method(method: &str) -> Option<Capability> {
         Method::TRANSFORM => Capability::Transform,
         Method::GRAPH => Capability::Graph,
         Method::INDEX_ADD | Method::INDEX_DELETE => Capability::Index,
+        Method::FEEDBACK => Capability::Feedback,
+        Method::MEMORY_BUILD | Method::MEMORY_RECALL => Capability::Memory,
         Method::CATALOG_LIST => Capability::Catalog,
         _ => return None,
     })

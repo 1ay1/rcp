@@ -28,6 +28,9 @@ inline constexpr std::string_view Transform   = "query/transform";
 inline constexpr std::string_view Graph       = "graph";
 inline constexpr std::string_view IndexAdd    = "index/add";
 inline constexpr std::string_view IndexDelete = "index/delete";
+inline constexpr std::string_view Feedback    = "feedback";
+inline constexpr std::string_view MemoryBuild = "memory/build";
+inline constexpr std::string_view MemoryRecall= "memory/recall";
 inline constexpr std::string_view Catalog     = "catalog/list";
 inline constexpr std::string_view Cancel      = "notifications/cancel";
 inline constexpr std::string_view Progress    = "notifications/progress";
@@ -51,7 +54,8 @@ struct PeerInfo {
 // ── Capability lattice ───────────────────────────────────────────────────────
 // A typed enum so capability checks are exhaustive matches, not string compares.
 enum class Capability {
-    Embed, SparseEmbed, MultiVector, Rerank, Retrieve, Transform, Graph, Index, Catalog
+    Embed, SparseEmbed, MultiVector, Rerank, Retrieve, Transform, Graph, Index,
+    Session, Feedback, Memory, Catalog
 };
 
 [[nodiscard]] constexpr std::string_view to_string(Capability c) noexcept {
@@ -64,6 +68,9 @@ enum class Capability {
         case Capability::Transform:   return "transform";
         case Capability::Graph:       return "graph";
         case Capability::Index:       return "index";
+        case Capability::Session:     return "session";
+        case Capability::Feedback:    return "feedback";
+        case Capability::Memory:      return "memory";
         case Capability::Catalog:     return "catalog";
     }
     return "?";
@@ -71,7 +78,8 @@ enum class Capability {
 
 // presence ⇒ supported. Each optional is nullopt (absent) or a metadata object.
 struct Capabilities {
-    std::optional<Json> embed, sparse_embed, multi_vector, rerank, retrieve, transform, graph, index, catalog;
+    std::optional<Json> embed, sparse_embed, multi_vector, rerank, retrieve, transform, graph, index,
+                        session, feedback, memory, catalog;
     bool streaming = false, pagination = false, citations = false, log_ = false;
 
     [[nodiscard]] const std::optional<Json>& slot(Capability c) const noexcept {
@@ -84,6 +92,9 @@ struct Capabilities {
             case Capability::Transform:   return transform;
             case Capability::Graph:       return graph;
             case Capability::Index:       return index;
+            case Capability::Session:     return session;
+            case Capability::Feedback:    return feedback;
+            case Capability::Memory:      return memory;
             case Capability::Catalog:     return catalog;
         }
         return embed; // unreachable
@@ -134,6 +145,21 @@ struct Capabilities {
         index = Json{{"writable", writable}};
         return *this;
     }
+    // Agentic/session state for iterative retrieval (spec §7.7.3).
+    Capabilities& with_session(bool dedup = true) {
+        session = Json{{"dedup", dedup}};
+        return *this;
+    }
+    // Accept client→server relevance/reward/integrity signals (spec §7.16).
+    Capabilities& with_feedback() {
+        feedback = Json::object();
+        return *this;
+    }
+    // Global/session memory build + clue recall (spec §7.17).
+    Capabilities& with_memory(std::vector<std::string> scopes = {"global"}, bool clues = true) {
+        memory = Json{{"scopes", std::move(scopes)}, {"clues", clues}};
+        return *this;
+    }
     Capabilities& with_catalog(std::size_t engines = 0) {
         catalog = Json::object();
         if (engines) (*catalog)["engines"] = engines;
@@ -152,7 +178,8 @@ struct Capabilities {
         put("multiVector", multi_vector); put("rerank", rerank);
         put("retrieve", retrieve);     put("transform", transform);
         put("graph", graph);           put("index", index);
-        put("catalog", catalog);
+        put("session", session);       put("feedback", feedback);
+        put("memory", memory);         put("catalog", catalog);
         // Object-form presence flags (spec §6): presence ⇒ supported.
         if (streaming)  j["streaming"]  = Json::object();
         if (pagination) j["pagination"] = Json::object();
@@ -170,7 +197,9 @@ struct Capabilities {
         };
         c.embed = get("embed"); c.sparse_embed = get("sparseEmbed"); c.multi_vector = get("multiVector");
         c.rerank = get("rerank"); c.retrieve = get("retrieve"); c.transform = get("transform");
-        c.graph = get("graph"); c.index = get("index"); c.catalog = get("catalog");
+        c.graph = get("graph"); c.index = get("index");
+        c.session = get("session"); c.feedback = get("feedback"); c.memory = get("memory");
+        c.catalog = get("catalog");
         // A flag is "present" whether it arrived as an object (§6) or a legacy bool.
         c.streaming  = j.contains("streaming")  && !j["streaming"].is_null();
         c.pagination = j.contains("pagination") && !j["pagination"].is_null();
@@ -206,9 +235,14 @@ struct Hit {
     Score       score{0.0};
     std::string text;
     std::string modality;   // "text"|"image"|"audio"|"code"|"multimodal" (§4.8)
+    std::string unit;       // granularity: chunk|document|node|triplet|…|page (§7.7.2)
+    std::optional<double> confidence;  // normalised [0,1] self-eval (§7.7.2)
+    std::optional<std::int64_t> level; // abstraction level (RAPTOR depth, Leiden) (§7.7.2)
     Json        meta;
     Json        citation;
-    Json        trust;      // provenance {level, score?} (§15.2)
+    Json        scores;     // per-stage breakdown {dense,sparse,rerank} (§7.7)
+    Json        provenance; // graph/tree lineage {path,nodes,edges,leaves} (§7.7.2)
+    Json        trust;      // provenance + safety {level, score?, injectionSuspected?} (§15.2)
     Json        content;    // non-text bodies [Content] (§4.8)
 
     static Hit from_json(const Json& j) {
@@ -217,10 +251,17 @@ struct Hit {
         h.score = Score{j.value("score", 0.0)};
         h.text  = j.value("text", std::string{});
         h.modality = j.value("modality", std::string{});
-        if (j.contains("meta"))     h.meta = j["meta"];
-        if (j.contains("citation")) h.citation = j["citation"];
-        if (j.contains("trust"))    h.trust = j["trust"];
-        if (j.contains("content"))  h.content = j["content"];
+        h.unit  = j.value("unit", std::string{});
+        if (auto it = j.find("confidence"); it != j.end() && it->is_number())
+            h.confidence = it->get<double>();
+        if (auto it = j.find("level"); it != j.end() && it->is_number_integer())
+            h.level = it->get<std::int64_t>();
+        if (j.contains("meta"))       h.meta = j["meta"];
+        if (j.contains("citation"))   h.citation = j["citation"];
+        if (j.contains("scores"))     h.scores = j["scores"];
+        if (j.contains("provenance")) h.provenance = j["provenance"];
+        if (j.contains("trust"))      h.trust = j["trust"];
+        if (j.contains("content"))    h.content = j["content"];
         return h;
     }
 };

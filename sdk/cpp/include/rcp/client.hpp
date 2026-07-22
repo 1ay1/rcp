@@ -162,6 +162,33 @@ public:
         if (auto g = gate(Capability::Catalog); !g) return std::unexpected(g.error());
         return request(method::Catalog, Json::object());
     }
+    // Send client→server relevance/reward/integrity signals (spec §7.16). Each
+    // signal object REQUIRES `hitId`. Returns { accepted }. Side-effect only.
+    [[nodiscard]] Result<Json> feedback(Json signals, Json opts = Json::object()) {
+        if (auto g = gate(Capability::Feedback); !g) return std::unexpected(g.error());
+        if (!signals.is_array())
+            return fail<Json>(errc::InvalidParams, "feedback signals must be an array");
+        for (const auto& s : signals)
+            if (!s.is_object() || !s.contains("hitId"))
+                return fail<Json>(errc::InvalidParams, "each feedback signal requires 'hitId'");
+        Json p = std::move(opts);
+        p["signals"] = std::move(signals);
+        return request(method::Feedback, std::move(p));
+    }
+    // Build or update a global/session memory (spec §7.17) → { memoryId, tokens? }.
+    [[nodiscard]] Result<Json> memory_build(Json params = Json::object()) {
+        if (auto g = gate(Capability::Memory); !g) return std::unexpected(g.error());
+        return request(method::MemoryBuild, std::move(params));
+    }
+    // Recall clues / entry-points from a memory (spec §7.17) → { clues, hits? }.
+    [[nodiscard]] Result<Json> memory_recall(std::string_view query, Json opts = Json::object()) {
+        if (auto g = gate(Capability::Memory); !g) return std::unexpected(g.error());
+        if (auto it = opts.find("n"); it != opts.end() && it->is_number_integer() && it->get<std::int64_t>() < 1)
+            return fail<Json>(errc::InvalidParams, "value must be >= 1");
+        Json p = std::move(opts);
+        p["query"] = query;
+        return request(method::MemoryRecall, std::move(p));
+    }
     // Re-fetch identity + capabilities with no state change (spec §7.2); also
     // refreshes this client's cached capability set.
     [[nodiscard]] Result<InitializeResult> info() {

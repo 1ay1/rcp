@@ -47,7 +47,10 @@ struct ExampleEngine {
         Capabilities c;
         c.with_embed(Dimension{DIM}, "toy-hash-v1")
          .with_retrieve(100, {"dense", "sparse", "hybrid"})
-         .with_graph({"local", "global"});
+         .with_graph({"local", "global"})
+         .with_session()
+         .with_feedback()
+         .with_memory({"global"}, true);
         c.citations = true;
         return c;
     }
@@ -75,7 +78,10 @@ struct ExampleEngine {
         for (std::size_t r = 0; r < scored.size() && r < k; ++r) {
             auto& [s, i] = scored[r];
             hits.push_back(Json{{"id", DOCS[i].first}, {"score", s}, {"text", DOCS[i].second},
-                                {"citation", {{"source", DOCS[i].first}}}});
+                                {"confidence", s < 0 ? 0.0 : (s > 1 ? 1.0 : s)},  // normalised [0,1]
+                                {"unit", p.value("unit", std::string{"chunk"})},
+                                {"citation", {{"source", DOCS[i].first}}},
+                                {"trust", {{"level", "trusted"}}}});
         }
         return Json{{"hits", std::move(hits)},
                     {"usage", {{"mode", p.value("mode", std::string{"hybrid"})},
@@ -87,6 +93,24 @@ struct ExampleEngine {
         if (p.value("op", std::string{}) == "global")
             return Json{{"summary", "a global community summary"}, {"communities", Json::array()}};
         return retrieve(p);
+    }
+
+    // Client→server signals (spec §7.16): a real engine would log or online-update;
+    // the example just counts what it accepted.
+    Result<Json> feedback(const Json& p) {
+        std::size_t n = p.contains("signals") && p["signals"].is_array() ? p["signals"].size() : 0;
+        return Json{{"accepted", n}};
+    }
+
+    // Global/session memory (spec §7.17): a real engine would summarise the corpus;
+    // the example returns a stub handle and a couple of clues.
+    Result<Json> memory_build(const Json&) {
+        return Json{{"memoryId", "mem-example"}, {"tokens", 0}};
+    }
+    Result<Json> memory_recall(const Json& p) {
+        return Json{{"clues", Json::array({
+            Json{{"query", p.value("query", std::string{})}, {"weight", 1.0}},
+            Json{{"seedIds", Json::array({"d1"})}, {"weight", 0.5}}})}};
     }
 };
 

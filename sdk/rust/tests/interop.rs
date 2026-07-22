@@ -89,7 +89,33 @@ fn client_against_cpp_server() {
     let hits = c.retrieve("landmark in the French capital", 2).unwrap();
     assert_eq!(hits.len(), 2);
     assert!(!hits[0].id.is_empty());
+    // the C++ server now returns agentic/eval fields — assert they cross the wire
+    // and populate the typed Hit struct.
+    let conf = hits[0].confidence.expect("confidence present");
+    assert!((0.0..=1.0).contains(&conf));
+    assert_eq!(hits[0].unit.as_deref(), Some("chunk"));
+    assert_eq!(
+        hits[0].trust.as_ref().and_then(|t| t.get("level")).and_then(|v| v.as_str()),
+        Some("trusted")
+    );
     println!("client<->C++: ok, top hit = {}", hits[0].id);
+
+    // feedback + memory round-trip across languages against the C++ server
+    if c.supports(Capability::Feedback) {
+        let fb = c
+            .feedback(
+                vec![obj(&[("hitId", hits[0].id.clone().into()), ("used", true.into()), ("reward", 0.9.into())])],
+                None,
+            )
+            .unwrap();
+        assert_eq!(fb.get("accepted").and_then(|v| v.as_i64()), Some(1), "{}", fb);
+        println!("client<->C++ feedback: ok");
+    }
+    if c.supports(Capability::Memory) {
+        let mr = c.memory_recall("french landmark", None).unwrap();
+        assert!(mr.get("clues").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false), "{}", mr);
+        println!("client<->C++ memory: ok");
+    }
 
     let pong = c.ping(Some(Json::from(123))).unwrap();
     assert_eq!(pong.get("nonce").and_then(|v| v.as_i64()), Some(123));
@@ -100,6 +126,102 @@ fn client_against_cpp_server() {
         Ok(_) => panic!("expected a gating error"),
     }
     c.shutdown();
+}
+
+#[test]
+fn agentic_surfaces() {
+    // feedback + memory dispatch, capability gating, and full Hit-field parsing.
+    let mut s = Server::new();
+    s.set_info("rust-agentic", "1.0");
+    s.advertise(
+        Capability::Retrieve,
+        obj(&[("maxK", 100.into()), ("confidence", true.into())]),
+    );
+    s.advertise(Capability::Session, obj(&[("dedup", true.into())]));
+    s.advertise(Capability::Feedback, Json::object());
+    s.advertise(Capability::Memory, obj(&[("clues", true.into())]));
+
+    s.on(Method::RETRIEVE, |p| {
+        let unit = p.get_str("unit").unwrap_or("chunk");
+        Ok(obj(&[(
+            "hits",
+            vec![obj(&[
+                ("id", 42.into()),
+                ("score", 0.9.into()),
+                ("text", "x".into()),
+                ("confidence", 0.83.into()),
+                ("unit", unit.into()),
+                ("level", 2.into()),
+                ("provenance", obj(&[("path", vec![Json::from("e:a")].into())])),
+                ("trust", obj(&[("level", "trusted".into())])),
+                ("scores", obj(&[("dense", 0.7.into())])),
+            ])]
+            .into(),
+        )]))
+    });
+    s.on(Method::FEEDBACK, |p| {
+        let n = p.get("signals").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+        Ok(obj(&[("accepted", (n as i64).into())]))
+    });
+    s.on(Method::MEMORY_BUILD, |_p| {
+        Ok(obj(&[("memoryId", "mem-1".into()), ("tokens", 2048.into())]))
+    });
+    s.on(Method::MEMORY_RECALL, |_p| {
+        Ok(obj(&[(
+            "clues",
+            vec![obj(&[("query", "sub-q".into()), ("weight", 0.9.into())])].into(),
+        )]))
+    });
+
+    s.handle(&req(1, "initialize", obj(&[("protocolVersion", 1.into())]))).unwrap();
+
+    // retrieve carries agentic knobs through; hit fields parse via hit_from_json
+    let ret = s
+        .handle(&req(
+            2,
+            "retrieve",
+            obj(&[("query", "q".into()), ("k", 1.into()), ("unit", "tree-node".into())]),
+        ))
+        .unwrap();
+    let hit = &ret.get("result").unwrap().get("hits").unwrap().as_array().unwrap()[0];
+    assert_eq!(hit.get("confidence").and_then(|v| v.as_f64()), Some(0.83));
+    assert_eq!(hit.get_str("unit"), Some("tree-node"));
+    assert_eq!(
+        hit.get("provenance").unwrap().get("path").unwrap().as_array().unwrap()[0].as_str(),
+        Some("e:a")
+    );
+
+    // feedback
+    let fb = s
+        .handle(&req(
+            3,
+            "feedback",
+            obj(&[(
+                "signals",
+                vec![obj(&[("hitId", "42".into()), ("used", true.into()), ("reward", 0.8.into())])].into(),
+            )]),
+        ))
+        .unwrap();
+    assert_eq!(fb.get("result").unwrap().get("accepted").unwrap().as_i64(), Some(1), "{}", fb);
+
+    // memory build + recall
+    let mb = s.handle(&req(4, "memory/build", obj(&[("scope", "global".into())]))).unwrap();
+    assert_eq!(mb.get("result").unwrap().get_str("memoryId"), Some("mem-1"));
+    let mr = s.handle(&req(5, "memory/recall", obj(&[("query", "q".into())]))).unwrap();
+    assert_eq!(
+        mr.get("result").unwrap().get("clues").unwrap().as_array().unwrap().len(),
+        1
+    );
+
+    // unadvertised memory -> CapabilityMissing
+    let mut bare = Server::new();
+    bare.set_info("bare", "1.0");
+    bare.advertise(Capability::Retrieve, Json::object());
+    bare.handle(&req(1, "initialize", obj(&[("protocolVersion", 1.into())]))).unwrap();
+    let miss = bare.handle(&req(2, "memory/recall", obj(&[("query", "q".into())]))).unwrap();
+    assert_eq!(err_code(&miss), Some(-32003), "{}", miss);
+
+    println!("agentic surfaces: ok");
 }
 
 #[test]

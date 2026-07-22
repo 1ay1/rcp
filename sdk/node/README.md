@@ -58,7 +58,19 @@ try {
 
 Client methods: `embed`, `embedSparse`, `embedMulti`, `rerank`, `retrieve`,
 `search` (returns `{ hits, usage, nextCursor }`), `graph`, `transform`,
-`indexAdd`, `indexDelete`, `catalog`, `info`, `ping`, `call`, `shutdown`.
+`indexAdd`, `indexDelete`, `feedback`, `memoryBuild`, `memoryRecall`, `catalog`,
+`info`, `ping`, `call`, `shutdown`.
+
+### Agentic & frontier RAG
+
+The full 2024–2026 RAG surface is present. `retrieve` opts carry `unit` /
+`level` (granularity), `tokenBudget` (long-context packing), and `sessionId`
+(agentic trajectories); each returned hit preserves `confidence`, `unit`,
+`level`, `scores`, `provenance`, and `trust`. `feedback(signals)` sends
+RL / corrective / integrity signals back (spec §7.16), and `memoryBuild` /
+`memoryRecall` drive MemoRAG / HippoRAG memory → clues (spec §7.17). All three
+are capability-gated (`Capability.Feedback`, `Capability.Memory`,
+`Capability.Session`).
 
 ## Server
 

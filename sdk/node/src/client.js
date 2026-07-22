@@ -13,14 +13,25 @@ import { Capability, Errc, MIN_PROTOCOL_VERSION, Method, PROTOCOL_VERSION, RcpEr
 
 const CLIENT_INFO = { name: "rcp-node", version: "1.0" };
 
-// Normalise one retrieval Hit to `{ id, score, text[, citation] }` — the
-// canonical hit shape (id coerced to string, extra fields dropped).
+// Optional Hit fields (spec §7.7) preserved verbatim when present, so agentic /
+// graph / eval clients see confidence, granularity, provenance, and trust rather
+// than a lossy {id,score,text}.
+const HIT_PASSTHROUGH = [
+  "citation", "confidence", "unit", "level", "modality", "content",
+  "scores", "provenance", "trust", "meta", "vector", "chunk",
+];
+
+// Normalise one retrieval Hit: ALWAYS `{ id, score, text }` (id coerced to a
+// string), plus every optional spec §7.7 field that was present. Non-object
+// inputs degrade to a text-only hit.
 function hitToObject(h) {
   if (!h || typeof h !== "object") return { id: "", score: 0.0, text: String(h ?? "") };
   const rawId = h.id ?? "";
   const id = typeof rawId === "string" ? rawId : JSON.stringify(rawId);
   const out = { id, score: Number(h.score ?? 0.0), text: h.text ?? "" };
-  if (h.citation !== undefined && h.citation !== null) out.citation = h.citation;
+  for (const key of HIT_PASSTHROUGH) {
+    if (h[key] !== undefined && h[key] !== null) out[key] = h[key];
+  }
   return out;
 }
 
@@ -153,6 +164,40 @@ export class Client {
   async catalog() {
     this._gate(Capability.Catalog);
     return this._request(Method.CATALOG_LIST, {});
+  }
+
+  // Send client->server relevance/reward/integrity signals (spec §7.16). Each
+  // signal REQUIRES `hitId`. Returns `{ accepted }`; side-effect only.
+  async feedback(signals, opts = null) {
+    this._gate(Capability.Feedback);
+    if (!Array.isArray(signals)) {
+      throw new RcpError(Errc.INVALID_PARAMS, "feedback signals must be an array");
+    }
+    for (const s of signals) {
+      if (!s || typeof s !== "object" || s.hitId === undefined || s.hitId === null) {
+        throw new RcpError(Errc.INVALID_PARAMS, "each feedback signal requires 'hitId'");
+      }
+    }
+    const p = opts ? { ...opts } : {};
+    p.signals = signals;
+    return this._request(Method.FEEDBACK, p);
+  }
+
+  // Build or update a global/session memory (spec §7.17) -> `{ memoryId, tokens? }`.
+  async memoryBuild(params = null) {
+    this._gate(Capability.Memory);
+    return this._request(Method.MEMORY_BUILD, params ? { ...params } : {});
+  }
+
+  // Recall clues / entry-points from a memory (spec §7.17) -> `{ clues, hits? }`.
+  async memoryRecall(query, opts = null) {
+    this._gate(Capability.Memory);
+    const p = opts ? { ...opts } : {};
+    if (p.n !== undefined && p.n !== null && p.n < 1) {
+      throw new RcpError(Errc.INVALID_PARAMS, "value must be >= 1");
+    }
+    p.query = query;
+    return this._request(Method.MEMORY_RECALL, p);
   }
 
   // Re-fetch server identity + capabilities without re-initialising.

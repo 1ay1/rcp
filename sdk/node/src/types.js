@@ -26,6 +26,9 @@ export const Capability = Object.freeze({
   Transform: "transform",
   Graph: "graph",
   Index: "index",
+  Session: "session",
+  Feedback: "feedback",
+  Memory: "memory",
   Catalog: "catalog",
 });
 
@@ -42,6 +45,9 @@ export const Method = Object.freeze({
   GRAPH: "graph",
   INDEX_ADD: "index/add",
   INDEX_DELETE: "index/delete",
+  FEEDBACK: "feedback",
+  MEMORY_BUILD: "memory/build",
+  MEMORY_RECALL: "memory/recall",
   CATALOG_LIST: "catalog/list",
   CANCEL: "notifications/cancel",
   PROGRESS: "notifications/progress",
@@ -105,5 +111,8 @@ export const CAP_FOR_METHOD = Object.freeze({
   [Method.GRAPH]: Capability.Graph,
   [Method.INDEX_ADD]: Capability.Index,
   [Method.INDEX_DELETE]: Capability.Index,
+  [Method.FEEDBACK]: Capability.Feedback,
+  [Method.MEMORY_BUILD]: Capability.Memory,
+  [Method.MEMORY_RECALL]: Capability.Memory,
   [Method.CATALOG_LIST]: Capability.Catalog,
 });

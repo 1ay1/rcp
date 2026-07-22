@@ -66,7 +66,24 @@ async function testClientAgainstCppServer() {
   const hits = await c.retrieve("landmark in the French capital", 2);
   assert.equal(hits.length, 2);
   assert.ok(hits[0].id, JSON.stringify(hits));
+  // the C++ server now returns agentic/eval fields — assert they cross the wire
+  // and survive the (non-lossy) client normalisation.
+  assert.ok(typeof hits[0].confidence === "number" && hits[0].confidence >= 0 && hits[0].confidence <= 1, JSON.stringify(hits[0]));
+  assert.equal(hits[0].unit, "chunk", JSON.stringify(hits[0]));
+  assert.equal(hits[0].trust?.level, "trusted", JSON.stringify(hits[0]));
   console.log(`client<->C++: ok, top hit = ${hits[0].id}`);
+
+  // feedback + memory round-trip across languages against the C++ server
+  if (c.supports(rcp.Capability.Feedback)) {
+    const fb = await c.feedback([{ hitId: hits[0].id, used: true, reward: 0.9 }], { query: "q" });
+    assert.equal(fb.accepted, 1, JSON.stringify(fb));
+    console.log("client<->C++ feedback: ok");
+  }
+  if (c.supports(rcp.Capability.Memory)) {
+    const mr = await c.memoryRecall("french landmark", { n: 2 });
+    assert.ok(Array.isArray(mr.clues) && mr.clues.length > 0, JSON.stringify(mr));
+    console.log("client<->C++ memory: ok");
+  }
 
   // ping echoes the nonce (ungated, works any time)
   const pong = await c.ping(123);
@@ -99,7 +116,69 @@ async function testRegistrySelector() {
   console.log("registry selector: ok");
 }
 
+async function testAgenticSurfaces() {
+  // feedback + memory dispatch, capability gating, and full Hit-field round-trip.
+  const s = new rcp.Server();
+  s.setInfo("node-agentic", "1.0");
+  s.advertise(rcp.Capability.Retrieve, { maxK: 100, confidence: true, units: ["chunk", "tree-node"] });
+  s.advertise(rcp.Capability.Session, { dedup: true });
+  s.advertise(rcp.Capability.Feedback, {});
+  s.advertise(rcp.Capability.Memory, { scopes: ["global"], clues: true });
+
+  s.on("retrieve", (params) => ({
+    hits: [{
+      id: 42, score: 0.9, text: params.query,
+      confidence: 0.83, unit: params.unit ?? "chunk", level: params.level ?? 0,
+      provenance: { path: ["e:a", "e:b"], leaves: ["doc:1#0"] },
+      trust: { level: "trusted", injectionSuspected: false },
+      scores: { dense: 0.7, rerank: 0.9 },
+    }],
+    usage: { tokens: 128 },
+  }));
+  s.on("feedback", (params) => ({ accepted: (params.signals ?? []).length }));
+  s.on("memory/build", () => ({ memoryId: "mem-1", tokens: 2048 }));
+  s.on("memory/recall", () => ({ clues: [{ query: "sub-q", seedIds: ["e:a"], weight: 0.9 }] }));
+
+  await s.handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 1 } });
+
+  // retrieve carries the agentic knobs; new hit fields survive normalisation
+  const ret = await s.handle({
+    jsonrpc: "2.0", id: 2, method: "retrieve",
+    params: { query: "q", k: 1, unit: "tree-node", level: 2, tokenBudget: 500, sessionId: "traj-1" },
+  });
+  const h = ret.result.hits[0];
+  assert.equal(h.confidence, 0.83, JSON.stringify(h));
+  assert.equal(h.unit, "tree-node");
+  assert.deepEqual(h.provenance.path, ["e:a", "e:b"]);
+  assert.equal(h.trust.level, "trusted");
+  assert.equal(h.scores.dense, 0.7);
+
+  // feedback
+  const fb = await s.handle({
+    jsonrpc: "2.0", id: 3, method: "feedback",
+    params: { sessionId: "traj-1", query: "q", signals: [{ hitId: "42", used: true, cited: true, reward: 0.8 }] },
+  });
+  assert.equal(fb.result.accepted, 1, JSON.stringify(fb));
+
+  // memory build + recall
+  const mb = await s.handle({ jsonrpc: "2.0", id: 4, method: "memory/build", params: { scope: "global" } });
+  assert.equal(mb.result.memoryId, "mem-1", JSON.stringify(mb));
+  const mr = await s.handle({ jsonrpc: "2.0", id: 5, method: "memory/recall", params: { query: "q", memoryId: "mem-1", n: 3 } });
+  assert.deepEqual(mr.result.clues[0].seedIds, ["e:a"], JSON.stringify(mr));
+
+  // a server that never advertised memory rejects it with CapabilityMissing
+  const bare = new rcp.Server();
+  bare.setInfo("bare", "1.0");
+  bare.advertise(rcp.Capability.Retrieve, {});
+  await bare.handle({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 1 } });
+  const miss = await bare.handle({ jsonrpc: "2.0", id: 2, method: "memory/recall", params: { query: "q" } });
+  assert.equal(miss.error.code, -32003, JSON.stringify(miss));
+
+  console.log("agentic surfaces (feedback/memory/hit-fields): ok");
+}
+
 await testServerInproc();
 await testClientAgainstCppServer();
 await testRegistrySelector();
+await testAgenticSurfaces();
 console.log("\nall native Node.js SDK checks passed");
