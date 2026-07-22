@@ -1,0 +1,105 @@
+// test.js — smoke test for the native Node.js RCP SDK: client + server + gating.
+//
+// Zero dependencies. The `client<->C++` case proves cross-language interop
+// against sdk/cpp/example_server when it is built.
+import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import * as rcp from "./src/index.js";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+async function testServerInproc() {
+  // Exercise the Server dispatcher in-process (no transport).
+  const s = new rcp.Server();
+  s.setInfo("node-engine", "1.0");
+  s.advertise(rcp.Capability.Retrieve, { maxK: 100, modes: ["hybrid"] });
+  s.on("retrieve", (params) => ({ hits: [{ id: "d1", score: 0.9, text: params.query }] }));
+
+  // pre-initialize -> NotInitialized
+  let r = await s.handle({ jsonrpc: "2.0", id: 1, method: "retrieve", params: { query: "x", k: 1 } });
+  assert.equal(r.error.code, -32001, JSON.stringify(r));
+
+  const init = await s.handle({ jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: 1 } });
+  const caps = init.result.capabilities;
+  assert.ok("retrieve" in caps && !("embed" in caps), JSON.stringify(caps));
+
+  const ret = await s.handle({ jsonrpc: "2.0", id: 3, method: "retrieve", params: { query: "hello", k: 1 } });
+  assert.equal(ret.result.hits[0].text, "hello", JSON.stringify(ret));
+
+  // unadvertised capability -> CapabilityMissing
+  const emb = await s.handle({ jsonrpc: "2.0", id: 4, method: "embed", params: { texts: ["a"] } });
+  assert.equal(emb.error.code, -32003, JSON.stringify(emb));
+
+  // unknown method -> UnknownMethod
+  const unk = await s.handle({ jsonrpc: "2.0", id: 5, method: "no/such", params: {} });
+  assert.equal(unk.error.code, -32004, JSON.stringify(unk));
+
+  // batch: one response per request, notification drops out
+  const batch = await s.handleLine(
+    JSON.stringify([
+      { jsonrpc: "2.0", id: 6, method: "ping", params: { nonce: 1 } },
+      { jsonrpc: "2.0", method: "notifications/cancel", params: { id: 6 } },
+      { jsonrpc: "2.0", id: 7, method: "info", params: {} },
+    ])
+  );
+  const arr = JSON.parse(batch);
+  assert.equal(arr.length, 2, batch);
+  assert.equal(arr[0].result.nonce, 1, batch);
+
+  console.log("server in-proc: ok");
+}
+
+async function testClientAgainstCppServer() {
+  // Node client -> C++ example server subprocess (cross-language interop).
+  const cpp = path.join(here, "..", "cpp", "example_server");
+  if (!existsSync(cpp)) {
+    console.log("client<->C++: skipped (build sdk/cpp/example_server first)");
+    return;
+  }
+  const c = await rcp.connectStdio([cpp]);
+  assert.equal(c.protocolVersion, 1);
+  assert.ok(c.supports(rcp.Capability.Retrieve));
+  assert.ok(!c.supports(rcp.Capability.Rerank));
+
+  const hits = await c.retrieve("landmark in the French capital", 2);
+  assert.equal(hits.length, 2);
+  assert.ok(hits[0].id, JSON.stringify(hits));
+  console.log(`client<->C++: ok, top hit = ${hits[0].id}`);
+
+  // ping echoes the nonce (ungated, works any time)
+  const pong = await c.ping(123);
+  assert.equal(pong.nonce, 123, JSON.stringify(pong));
+  console.log("ping: ok");
+
+  // capability gating throws client-side for an unadvertised method
+  await assert.rejects(
+    () => c.rerank("q", ["a", "b"]),
+    (e) => e instanceof rcp.RcpError && /rerank/.test(e.message),
+  );
+  console.log("client gating: ok");
+
+  await c.shutdown();
+}
+
+async function testRegistrySelector() {
+  // Selector.loads builds from an rcp.json registry and picks a live backend.
+  const srv = path.join(here, "examples", "example_server.js");
+  const reg = JSON.stringify({
+    engines: [{ id: "docs", transport: "stdio", command: ["node", srv], priority: 10 }],
+  });
+  const sel = rcp.Selector.loads(reg);
+  assert.equal(sel.size, 1);
+  const c = await sel.selectPrimary();
+  assert.ok(c.supports(rcp.Capability.Retrieve));
+  const hits = await c.retrieve("french landmark", 1);
+  assert.equal(hits.length, 1, JSON.stringify(hits));
+  await c.shutdown();
+  console.log("registry selector: ok");
+}
+
+await testServerInproc();
+await testClientAgainstCppServer();
+await testRegistrySelector();
+console.log("\nall native Node.js SDK checks passed");

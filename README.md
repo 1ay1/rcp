@@ -52,10 +52,11 @@ pagination — learn one, you know the shape of all three.
 
 ## SDKs
 
-RCP ships **two SDKs** that speak the identical wire format: a **type-theoretic
-C++ SDK** (header-only) and a **native Python SDK** (pure standard library — no
-compiler, no dependencies, nothing to build). Cross-language interop is proven by
-the test suite: a Python client drives a C++ server and vice versa.
+RCP ships **three SDKs** that speak the identical wire format: a **type-theoretic
+C++ SDK** (header-only), a **native Python SDK**, and a **native Node.js SDK** —
+the Python and Node SDKs are pure standard library (no compiler, no dependencies,
+nothing to build). Cross-language interop is proven by the test suites: every
+client drives every server, in any combination.
 
 The C++ SDK pushes protocol invariants into the type system, proved at **compile
 time**:
@@ -94,6 +95,30 @@ c = rcp.connect_stdio(["python3", "my_engine.py"])
 if c.supports(rcp.Capability.Retrieve):
     for h in c.retrieve("eiffel tower", k=3):
         print(h["id"], h["score"])
+```
+
+### Node.js
+
+```js
+import * as rcp from "rcp-protocol";
+
+// ── server ──────────────────────────────────────────────
+const s = new rcp.Server();
+s.setInfo("my-engine", "1.0");
+s.advertise(rcp.Capability.Retrieve, { maxK: 100, modes: ["hybrid"] });
+
+s.on(rcp.Method.RETRIEVE, async (params) => {
+  const hits = await myIndex.search(params.query, params.k ?? 10);
+  return { hits: hits.map((h) => ({ id: h.id, score: h.score, text: h.text })) };
+});
+
+await s.serveStdio();
+
+// ── client ──────────────────────────────────────────────
+const c = await rcp.connectStdio(["node", "my_engine.js"]);
+if (c.supports(rcp.Capability.Retrieve))
+  for (const h of await c.retrieve("eiffel tower", 3))
+    console.log(h.id, h.score);
 ```
 
 ### C++
@@ -170,6 +195,13 @@ cd sdk/python
 python3 test_bindings.py   # in-proc server + client↔C++ server + selector
 ```
 
+**Node.js** (standard library only — no dependencies, no build step):
+
+```sh
+cd sdk/node
+node test.js   # in-proc server + client↔C++ server + selector
+```
+
 **Conformance** — validate any server, in any language:
 
 ```sh
@@ -183,6 +215,7 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 - `schema/rcp-1.0.json` — JSON Schema (draft 2020-12) for every message shape.
 - `sdk/cpp/` — the type-theoretic C++ SDK (header-only) + examples + tests.
 - `sdk/python/` — the native Python `rcp` package (standard library only).
+- `sdk/node/` — the native Node.js `rcp-protocol` package (standard library only).
 - `conformance/` — transport-agnostic conformance suite.
 - `examples/` — runnable Python client/server.
 - `site/` — the documentation website (Astro + Starlight), auto-deployed to

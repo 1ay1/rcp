@@ -1,0 +1,39 @@
+{
+  "name": "rcp-protocol",
+  "version": "1.0.0",
+  "description": "Retrieval Context Protocol — native Node.js SDK (zero dependencies)",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node test.js",
+    "example:server": "node examples/example_server.js",
+    "example:client": "node examples/example_client.js"
+  },
+  "keywords": [
+    "rcp",
+    "rag",
+    "retrieval",
+    "protocol",
+    "json-rpc",
+    "mcp",
+    "acp"
+  ],
+  "license": "MIT",
+  "author": "RCP Working Group",
+  "homepage": "https://1ay1.github.io/rcp/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1ay1/rcp.git"
+  },
+  "files": [
+    "src",
+    "examples",
+    "README.md"
+  ]
+}
