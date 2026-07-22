@@ -185,9 +185,54 @@ def test_agentic_surfaces():
     print("agentic surfaces (feedback/memory/hit-fields): ok")
 
 
+def test_filter():
+    from rcp import filter as f
+    # Builder emits the exact spec §8 wire shape.
+    assert f.eq("lang", "fr").to_json() == {"field": "lang", "op": "eq", "value": "fr"}
+    tree = f.all_(f.eq("lang", "en"), f.gte("year", 2015)).to_json()
+    assert tree == {"and": [
+        {"field": "lang", "op": "eq", "value": "en"},
+        {"field": "year", "op": "gte", "value": 2015},
+    ]}
+    # Operator overloads compose to the same tree.
+    assert (f.eq("lang", "en") & f.gte("year", 2015)).to_json() == tree
+
+    fields = {"year": "int", "lang": "keyword"}
+    assert f.validate(tree, fields=fields) == tree
+    assert f.validate(None, fields=fields) is None
+    assert f.validate({}, fields=fields) is None
+
+    bad = [
+        {"field": "author", "op": "eq", "value": "z"},
+        {"field": "lang", "op": "equals", "value": "en"},
+        {"and": "not-a-list"},
+        {"field": "year", "op": "in", "value": 2017},
+        {"or": [{"field": "lang"}]},
+        {"field": "lang", "op": "gt", "value": "en"},
+        {"field": "x", "op": "eq", "value": 1, "and": []},
+    ]
+    for b in bad:
+        try:
+            f.validate(b, fields=fields)
+            raise AssertionError(f"expected -32602 for {b}")
+        except rcp.RcpError as e:
+            assert e.code == rcp.Errc.INVALID_PARAMS
+            assert isinstance(e.data, dict) and "field" in e.data
+
+    # Builder rejects nonsense locally.
+    for ctor in (lambda: f.eq("", "x"), lambda: f.all_("nope")):
+        try:
+            ctor()
+            raise AssertionError("builder should reject")
+        except (ValueError, TypeError):
+            pass
+    print("filter builder + validator: ok")
+
+
 if __name__ == "__main__":
     test_server_handle_inproc()
     test_client_against_cpp_server()
     test_registry_selector()
     test_agentic_surfaces()
+    test_filter()
     print("\nall native Python SDK checks passed")

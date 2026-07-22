@@ -177,8 +177,57 @@ async function testAgenticSurfaces() {
   console.log("agentic surfaces (feedback/memory/hit-fields): ok");
 }
 
+async function testFilter() {
+  const f = rcp.filter;
+  // Builder produces the exact spec §8 wire shape.
+  assert.deepEqual(f.eq("lang", "fr").toJSON(), { field: "lang", op: "eq", value: "fr" });
+  const tree = f.all(f.eq("lang", "en"), f.gte("year", 2015)).toJSON();
+  assert.deepEqual(tree, {
+    and: [
+      { field: "lang", op: "eq", value: "en" },
+      { field: "year", op: "gte", value: 2015 },
+    ],
+  });
+  // Operator overloads compose.
+  assert.deepEqual(
+    f.eq("lang", "en").and(f.gte("year", 2015)).toJSON(),
+    tree,
+  );
+
+  // Validator accepts a well-formed tree against advertised fields.
+  const fields = { year: "int", lang: "keyword" };
+  assert.deepEqual(f.validate(tree, { fields }), tree);
+  assert.equal(f.validate(null, { fields }), null);
+  assert.equal(f.validate({}, { fields }), null);
+
+  // Validator rejects every malformed / unauthorized tree with -32602.
+  const bad = [
+    { field: "author", op: "eq", value: "z" }, // unadvertised field
+    { field: "lang", op: "equals", value: "en" }, // typo op
+    { and: "not-a-list" }, // malformed combinator
+    { field: "year", op: "in", value: 2017 }, // in wants an array
+    { or: [{ field: "lang" }] }, // leaf missing op
+    { field: "lang", op: "gt", value: "en" }, // ordered op on keyword
+    { field: "x", op: "eq", value: 1, and: [] }, // combinator+leaf mix
+  ];
+  for (const b of bad) {
+    assert.throws(
+      () => f.validate(b, { fields }),
+      (e) => e instanceof rcp.RcpError && e.code === -32602 && e.data && "field" in e.data,
+      `expected -32602 for ${JSON.stringify(b)}`,
+    );
+  }
+
+  // Builder rejects nonsense locally, before the wire.
+  assert.throws(() => f.eq("", "x"), TypeError);
+  assert.throws(() => f.all("not-a-filter"), TypeError);
+
+  console.log("filter builder + validator: ok");
+}
+
 await testServerInproc();
 await testClientAgainstCppServer();
 await testRegistrySelector();
 await testAgenticSurfaces();
+await testFilter();
 console.log("\nall native Node.js SDK checks passed");

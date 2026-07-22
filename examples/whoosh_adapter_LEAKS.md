@@ -93,17 +93,32 @@ parity work, Node `types.js`). All four SDK test suites stay green; the Whoosh
 adapter now advertises `filter` via `rcp.Capability.Filter` and the client gates
 on it with `c.supports(rcp.Capability.Filter)`.
 
-## Leak #3 — no typed filter builder; clients hand-assemble the tree (OPEN, ergonomic)
+## Leak #3 — no typed filter builder; clients hand-assemble the tree (FIXED)
 
-The client sends the filter as a **raw nested dict** literal
-(`{"and":[{"field":"lang","op":"eq","value":"fr"}]}`). Nothing in the SDK helps
-build or validate it before it hits the wire; a typo like `"op":"equals"` sails
-through the client and only fails server-side with `-32602`. Contrast the hit
-*normaliser*, which is typed and total. **Recommendation (deferred):** ship a
-small filter builder in each SDK (`rcp.filter.eq("lang","fr") &
-rcp.filter.gte("year",2015)`) that emits the spec tree and rejects unknown
-operators locally. Pure ergonomics — the wire format is fine — left as a
-follow-up so this change set stays reviewable; it is additive and non-breaking.
+The client used to send the filter as a **raw nested dict** literal
+(`{"and":[{"field":"lang","op":"eq","value":"fr"}]}`). Nothing in the SDK helped
+build or validate it before it hit the wire; a typo like `"op":"equals"` sailed
+through the client and only failed server-side — and worse, a malformed tree
+(`{"and": "notalist"}`, a leaf missing `op`, an `in` with a scalar value) would
+throw a raw `KeyError`/`TypeError` inside a hand-written server parser and surface
+as a generic `-32603 Internal` instead of a precise `-32602`.
+
+**Fixed:** every SDK now ships a canonical **`rcp.filter`** module with two halves,
+so no peer ever hand-builds or hand-parses a filter again:
+
+* a **builder** — `eq`/`ne`/`gt`/`gte`/`lt`/`lte`/`in_`/`nin`/`contains`/`exists`
+  leaves and `all_`/`any_`/`not_` combinators (plus `&`/`|`/`~` operator sugar in
+  Python/Rust/C++), which reject nonsense at construction;
+* a **validator** — `validate(node, fields, operators)` that returns a normalized
+  tree or raises a precise `-32602` with `data.field` naming the offending path,
+  guarding field/operator authorization, value-shape (array vs scalar), ordered-
+  op-vs-type, combinator/leaf mixing, and nesting depth (DoS guard, §15.5).
+
+Shipped and tested in all four SDKs (Python `_filter.py`, Node `filter.js`, Rust
+`filter.rs`, C++ `filter.hpp`); the Whoosh adapter deleted its hand-rolled parser
+and now calls `rcp.filter.validate()` then compiles the *trusted* tree — so all
+six malformed-filter cases come back as clean `-32602`, proven by
+`whoosh_adapter_client.py`.
 
 ---
 
@@ -133,11 +148,17 @@ found are all fixable SDK/ergonomics gaps, not architectural faults — which is
 best possible outcome for "are we on the right track?": **yes on the protocol,
 with a short punch-list on the SDKs.**
 
-The punch-list, updated after acting on it:
+The punch-list, updated after acting on it — **all three closed**:
 
 1. ~~Add missing `Capability` enum members (`filter`, `streaming`, `pagination`,
    `log`, `citations`) to all four SDKs.~~ **DONE** — all four SDKs, tests green.
 2. ~~Add a standard `retrieve.scoreScale` capability field or a normative
    "compare via `confidence`, not `score`" rule.~~ **DONE** — spec §6.1 now has
    both.
-3. Ship a typed filter builder in each SDK. *(ergonomics — deferred, additive)*
+3. ~~Ship a typed filter builder in each SDK.~~ **DONE** — a full `rcp.filter`
+   builder **and** validator in all four SDKs, so no peer hand-builds or
+   hand-parses a filter tree ever again.
+
+Net effect: the abstraction is now robust and general enough that the leaks read
+as if they never existed — a new backend author writes a `retrieve` handler,
+calls `rcp.filter.validate()`, and gets correct `-32602` behaviour for free.

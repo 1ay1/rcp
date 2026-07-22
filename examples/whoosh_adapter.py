@@ -59,19 +59,15 @@ IX = _build_index()
 # A real, tunable BM25F scorer — the same knobs the spec exposes as capability.
 WEIGHTING = scoring.BM25F(B=0.75, K1=1.2)
 
-
-class FilterError(ValueError):
-    """Raised on a filter that references an unadvertised field/operator so the
-    server can map it to RCP error -32602 (spec §8)."""
-
-
-# Only these fields are advertised in `filter.fields`; anything else -> -32602.
+# Advertised filter surface (spec §8). The SDK validator gates against this, so
+# an unauthorized field/op becomes a clean -32602 before Whoosh is ever touched.
 _FILTER_FIELDS = {"year": "int", "lang": "keyword"}
+_FILTER_OPS = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "nin"]
 
 
 def _leaf(field, op, value):
-    if field not in _FILTER_FIELDS:
-        raise FilterError(f"filter.{field}")
+    """Compile ONE validated leaf into a Whoosh query. The tree is already
+    validated by rcp.filter.validate(), so no defensive parsing is needed here."""
     if op == "eq":
         return Term(field, str(value))
     if op == "ne":
@@ -85,24 +81,24 @@ def _leaf(field, op, value):
         return Or([Term(field, str(v)) for v in value])
     if op == "nin":
         return Not(Or([Term(field, str(v)) for v in value]))
-    raise FilterError(f"filter.{field}")  # unsupported operator on this backend
+    raise AssertionError(f"unreachable op {op!r}")  # validator guarantees coverage
 
 
-def _parse_filter(node):
-    """Compile RCP's boolean filter tree (spec §8) into a Whoosh query.
+def _compile_filter(node):
+    """Compile a VALIDATED RCP filter tree (spec §8) into a Whoosh query.
 
-    RCP filter is a nested tree: {and|or|not: [...]} combinators over
-    {field, op, value} leaves. This is the *real* shape from the spec, not a
-    flat map — an RCP-conformant client can send arbitrary nesting.
+    Input is trusted: it has already passed rcp.filter.validate(), so every
+    combinator/leaf is well-formed and every field/op is advertised. This keeps
+    the backend-specific code tiny and total.
     """
-    if not node:
+    if node is None:
         return None
     if "and" in node:
-        return And([_parse_filter(c) for c in node["and"]])
+        return And([_compile_filter(c) for c in node["and"]])
     if "or" in node:
-        return Or([_parse_filter(c) for c in node["or"]])
+        return Or([_compile_filter(c) for c in node["or"]])
     if "not" in node:
-        return Not(_parse_filter(node["not"]))
+        return Not(_compile_filter(node["not"]))
     return _leaf(node["field"], node["op"], node["value"])
 
 
@@ -119,7 +115,10 @@ def _search(query, k, rcp_filter=None, want_snippets=True):
     with IX.searcher(weighting=WEIGHTING) as s:
         parser = QueryParser("body", schema=IX.schema, group=OrGroup)
         q = parser.parse(query or "*")
-        mask = _parse_filter(rcp_filter)
+        # Validate against the advertised surface (raises -32602 on bad input),
+        # then compile the now-trusted tree to a Whoosh query.
+        clean = rcp.filter.validate(rcp_filter, fields=_FILTER_FIELDS, operators=_FILTER_OPS)
+        mask = _compile_filter(clean)
         results = s.search(q, limit=max(k, 1), filter=mask)
         results.fragmenter = highlight.ContextFragmenter(maxchars=160, surround=40)
         top = results[0].score if len(results) else 1.0
@@ -168,17 +167,14 @@ def build():
 
     @srv.on(rcp.Method.RETRIEVE)
     def _retrieve(params):
-        try:
-            hits = _search(
-                params.get("query", ""),
-                int(params.get("k", 10)),
-                params.get("filter"),
-            )
-        except FilterError as e:
-            # Map an unadvertised filter field/op to RCP -32602 (spec §8/§12).
-            raise rcp.RcpError(rcp.Errc.INVALID_PARAMS, str(e),
-                               data={"field": str(e)})
-        return {"hits": hits}
+        # rcp.filter.validate() inside _search raises RcpError(-32602) directly
+        # for a malformed or unauthorized filter — the server needs no try/except
+        # and can never leak a raw KeyError as -32603.
+        return {"hits": _search(
+            params.get("query", ""),
+            int(params.get("k", 10)),
+            params.get("filter"),
+        )}
 
     return srv
 

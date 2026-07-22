@@ -44,31 +44,59 @@ def main():
           f"conf={top['confidence']:.3f} quote={top['citation']['quote'][:48]!r}")
 
     # 2. Filter tree (real spec §8 shape) honoured by Whoosh's query engine:
-    #    French-only should now return d5, not the English d1.
-    fr = c.retrieve("eiffel tour paris", k=3,
-                    opts={"filter": {"field": "lang", "op": "eq", "value": "fr"}})
+    #    French-only should now return d5, not the English d1. Built two ways —
+    #    a raw dict AND the typed rcp.filter builder — which must agree exactly.
+    raw_flt = {"field": "lang", "op": "eq", "value": "fr"}
+    built_flt = rcp.filter.eq("lang", "fr").to_json()
+    assert built_flt == raw_flt, (built_flt, raw_flt)
+    fr = c.retrieve("eiffel tour paris", k=3, opts={"filter": built_flt})
     assert fr and all(h["provenance"]["lang"] == "fr" for h in fr), fr
     assert fr[0]["id"] == "d5", fr
-    print("filter eq OK: fr ->", [h["id"] for h in fr])
+    print("filter eq OK (builder==raw): fr ->", [h["id"] for h in fr])
 
-    # 3. Nested boolean + range filter: recent (year >= 2015) English docs.
-    recent = c.retrieve("model attention retrieval", k=5, opts={"filter": {
-        "and": [
-            {"field": "lang", "op": "eq", "value": "en"},
-            {"field": "year", "op": "gte", "value": 2015},
-        ]}})
+    # 3. Nested boolean + range filter via the builder's operator overloads.
+    recent_flt = rcp.filter.all_(
+        rcp.filter.eq("lang", "en"),
+        rcp.filter.gte("year", 2015),
+    )
+    recent = c.retrieve("model attention retrieval", k=5,
+                        opts={"filter": recent_flt.to_json()})
     ids = {h["id"] for h in recent}
     assert ids and ids <= {"d4", "d6"}, ids  # d4=2017, d6=2020 are the only matches
     assert all(h["provenance"]["year"] >= 2015 for h in recent), recent
     print("filter and+range OK: ->", sorted(ids))
 
-    # 4. Unadvertised filter field -> RCP -32602 (spec §8), not a crash.
-    try:
-        c.retrieve("x", k=1, opts={"filter": {"field": "author", "op": "eq", "value": "z"}})
-        raise AssertionError("expected -32602 for unadvertised field")
-    except rcp.RcpError as e:
-        assert e.code == rcp.Errc.INVALID_PARAMS, e.code
-        print("filter reject OK: -32602 for unadvertised field")
+    # 4. Robustness: every malformed / unauthorized filter -> clean -32602,
+    #    never a -32603 Internal crash. This is the leak that used to exist.
+    bad_filters = [
+        {"field": "author", "op": "eq", "value": "z"},   # unadvertised field
+        {"field": "lang", "op": "equals", "value": "en"}, # typo'd operator
+        {"and": "not-a-list"},                             # malformed combinator
+        {"field": "year", "op": "in", "value": 2017},      # in wants an array
+        {"or": [{"field": "lang"}]},                       # leaf missing op
+        {"field": "lang", "op": "gt", "value": "en"},      # ordered op on keyword
+    ]
+    for bad in bad_filters:
+        try:
+            c.retrieve("x", k=1, opts={"filter": bad})
+            raise AssertionError(f"expected -32602 for {bad}")
+        except rcp.RcpError as e:
+            assert e.code == rcp.Errc.INVALID_PARAMS, (bad, e.code)
+            assert isinstance(e.data, dict) and "field" in e.data, (bad, e.data)
+    print(f"filter reject OK: all {len(bad_filters)} malformed filters -> -32602")
+
+    # 5. The builder itself rejects nonsense locally (before the wire).
+    for construct in (
+        lambda: rcp.filter.eq("", "x"),          # empty field
+        lambda: rcp.filter._leaf("f", "equals"), # unknown op
+        lambda: rcp.filter.all_("not-a-filter"), # non-Filter clause
+    ):
+        try:
+            construct()
+            raise AssertionError("builder should have rejected bad input")
+        except (ValueError, TypeError):
+            pass
+    print("builder local validation OK")
 
     c.shutdown()
     print("\nALL PASS — Whoosh drives RCP with zero spec changes.")

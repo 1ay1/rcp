@@ -21,6 +21,7 @@
 
 #include "rcp/types.hpp"
 #include "rcp/protocol.hpp"
+#include "rcp/filter.hpp"
 #include "rcp/transport.hpp"
 #include "rcp/client.hpp"
 #include "rcp/selector.hpp"

@@ -37,6 +37,8 @@ export { Client } from "./client.js";
 export { Server, makeLogNotification, makeProgressNotification } from "./server.js";
 export { EngineSpec, Selector } from "./selector.js";
 export { HttpTransport, StdioTransport } from "./transport.js";
+import * as filter from "./filter.js";
+export { filter };
 
 import { Client } from "./client.js";
 

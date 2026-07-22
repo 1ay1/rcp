@@ -1077,6 +1077,14 @@ allowed for that field, and **MUST** reject an operator outside its advertised
 arbitrarily; an empty `and`/`or` array is `-32602`. Unless a server documents
 otherwise, string comparison is case-sensitive and byte-ordered.
 
+> **Implementation note.** The four reference SDKs ship a canonical `rcp.filter`
+> module with a **builder** (`eq`/`gte`/`in_`/`all_`/`any_`/`not_`, with `&`/`|`/`~`
+> sugar) and a **validator** — `validate(node, fields, operators)` — that returns
+> a normalized tree or a precise `-32602` (with `error.data.field`) for any
+> malformed, unauthorized, or mistyped filter. A server **SHOULD** call it before
+> compiling a filter to its backend query language rather than hand-parsing the
+> tree, which is the reliable way to satisfy this section and §15.4.
+
 ---
 
 ## 9. Streaming & progress

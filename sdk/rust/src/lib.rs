@@ -35,6 +35,7 @@
 //! ```
 
 mod client;
+pub mod filter;
 mod json;
 mod selector;
 mod server;
@@ -42,6 +43,7 @@ mod transport;
 mod types;
 
 pub use client::{Client, Hit, SearchResult};
+pub use filter::Filter;
 pub use json::{obj, Json};
 pub use selector::{EngineSpec, Selector};
 pub use server::{make_log_notification, make_progress_notification, Server};

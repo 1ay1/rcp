@@ -315,6 +315,40 @@ int main() {
     auto miss = srv.handle(Json{{"jsonrpc", "2.0"}, {"id", 31}, {"method", "memory/recall"}, {"params", {{"query", "q"}}}});
     CHECK(miss["error"]["code"] == errc::CapabilityMissing);
 
+    // ── Filter builder + validator (spec §8) ─────────────────────────────────
+    {
+        using namespace rcp::filter;
+        // Builder emits the exact wire shape.
+        Json leaf = eq("lang", "fr").to_json();
+        CHECK(leaf["field"] == "lang" && leaf["op"] == "eq" && leaf["value"] == "fr");
+        Json tree = (eq("lang", "en") && gte("year", 2015)).to_json();
+        CHECK(tree["and"].is_array() && tree["and"].size() == 2);
+
+        std::vector<FieldSpec> fields = {{"year", "int"}, {"lang", "keyword"}};
+        std::vector<std::string_view> ops = {"eq", "ne", "gt", "gte", "lt", "lte", "in", "nin"};
+
+        // Well-formed validates; absent/empty normalizes to null.
+        CHECK(rcp::filter::validate(tree, fields, ops).has_value());
+        CHECK(rcp::filter::validate(Json(nullptr), fields).value().is_null());
+        CHECK(rcp::filter::validate(Json::object(), fields).value().is_null());
+
+        // Every malformed / unauthorized tree -> -32602 with data.field.
+        std::vector<Json> badcases = {
+            Json{{"field", "author"}, {"op", "eq"}, {"value", "z"}},        // unadvertised field
+            Json{{"field", "lang"}, {"op", "equals"}, {"value", "en"}},     // typo op
+            Json{{"and", "not-a-list"}},                                      // malformed combinator
+            Json{{"field", "year"}, {"op", "in"}, {"value", 2017}},          // in wants an array
+            Json{{"or", Json::array({Json{{"field", "lang"}}})}},            // leaf missing op
+            Json{{"field", "lang"}, {"op", "gt"}, {"value", "en"}},          // ordered op on keyword
+        };
+        for (const auto& b : badcases) {
+            auto r = rcp::filter::validate(b, fields, ops);
+            CHECK(!r.has_value());
+            CHECK(!r && r.error().code == errc::InvalidParams);
+            CHECK(!r && r.error().data.is_object() && r.error().data.contains("field"));
+        }
+    }
+
     if (g_fail == 0) std::printf("all type + runtime checks passed\n");
     return g_fail == 0 ? 0 : 1;
 }

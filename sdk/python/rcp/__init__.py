@@ -31,6 +31,7 @@ Server (expose a Python RAG engine as an RCP server):
     s.serve_stdio()
 """
 from ._client import Client
+from . import _filter as filter  # noqa: A004 — public submodule `rcp.filter`
 from ._selector import EngineSpec, Selector
 from ._server import Server, make_log_notification, make_progress_notification
 from ._transport import HttpTransport, StdioTransport
@@ -47,7 +48,7 @@ __all__ = [
     "Client", "Server", "Selector", "EngineSpec", "Capability", "PROTOCOL_VERSION",
     "Method", "Errc", "RcpError", "connect_stdio", "connect_http",
     "make_log_notification", "make_progress_notification",
-    "StdioTransport", "HttpTransport", "negotiate_version",
+    "StdioTransport", "HttpTransport", "negotiate_version", "filter",
 ]
 __version__ = "1.0.0"
 
