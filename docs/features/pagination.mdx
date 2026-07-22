@@ -1,0 +1,41 @@
+---
+title: Pagination
+description: Walk large result sets with opaque, server-defined cursors — the same model MCP and ACP use.
+icon: arrow-right-long
+---
+
+When a server advertises **`pagination`**, list-style results (`retrieve`, and
+`graph` `communities`) **MAY** include an opaque `nextCursor`. The client fetches
+the next page by repeating the request with `cursor` set to that value.
+
+<Steps>
+  <Step title="First page">
+    Call `retrieve` normally. The result may include a `nextCursor`.
+    ```json
+    { "result": { "hits": [ /* … */ ], "nextCursor": "eyJvZmZzZXQiOjEwfQ" } }
+    ```
+  </Step>
+  <Step title="Next page">
+    Repeat the **same** request with `cursor` set to the previous `nextCursor`.
+    ```json
+    { "method": "retrieve", "params": { "query": "…", "k": 10, "cursor": "eyJvZmZzZXQiOjEwfQ" } }
+    ```
+  </Step>
+  <Step title="Last page">
+    A missing or empty `nextCursor` means there are no more results.
+  </Step>
+</Steps>
+
+<Note>
+Cursors are **opaque and server-defined** — a client **MUST NOT** parse,
+construct, or reorder them. Only ever send back a cursor a server gave you, with
+the same query parameters. This is the identical cursor model
+[MCP and ACP use](/ecosystem/mcp-acp), so a client's pagination logic is shared
+across all three protocols.
+</Note>
+
+<Tip>
+Pagination and `k` compose: `k` bounds a single page; the cursor walks across
+pages. For reproducible paging, pin an [`indexVersion`](/methods/retrieve#determinism-reproducibility)
+so the corpus doesn't shift under you mid-walk.
+</Tip>

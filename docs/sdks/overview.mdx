@@ -1,0 +1,54 @@
+---
+title: SDKs overview
+description: Three native SDKs — C++, Python, and Node.js — that speak the identical wire and interoperate byte-for-byte.
+icon: cubes
+---
+
+RCP ships **three native SDKs** that speak the identical wire format. Any client
+drives any server across languages — proven by each SDK's test suite and the
+shared conformance runner.
+
+<CardGroup cols={3}>
+  <Card title="C++" icon="c" href="/sdks/cpp">
+    Header-only, C++23, type-theoretic. Protocol invariants proved at compile
+    time.
+  </Card>
+  <Card title="Python" icon="python" href="/sdks/python">
+    Pure standard library — no compiler, no dependencies, nothing to build.
+  </Card>
+  <Card title="Node.js" icon="node-js" href="/sdks/node">
+    Pure standard library, ESM, async. Zero dependencies.
+  </Card>
+</CardGroup>
+
+## What every SDK gives you
+
+- A **`Client`** that connects over stdio or HTTP, runs the `initialize`
+  handshake, and exposes typed, **capability-gated** calls (`retrieve`, `embed`,
+  `rerank`, `graph`, …). A gated call to an unadvertised capability fails
+  *client-side* before any I/O.
+- A **`Server`** that owns the JSON-RPC framing, the handshake, capability
+  gating, batching, and error mapping — you write handlers.
+- A **`Selector`** for registry-driven [routing](/features/federation) with lazy
+  connect and priority fallback.
+- Uniform errors surfaced as a typed error whose message is
+  `"[RCP <code>] <message>"`, exposing `.code`, `.data`, `retryable()`.
+
+## The shared shape
+
+The three SDKs deliberately mirror each other (idiomatic per language):
+
+| Concept | C++ | Python | Node.js |
+|---------|-----|--------|---------|
+| Connect (stdio) | `Client::connect_stdio(argv)` | `rcp.connect_stdio(argv)` | `await rcp.connectStdio(argv)` |
+| Capability check | `c.supports(Capability::Retrieve)` | `c.supports(rcp.Capability.Retrieve)` | `c.supports(rcp.Capability.Retrieve)` |
+| Retrieve | `c.retrieve(q, k)` | `c.retrieve(q, k=…)` | `await c.retrieve(q, k)` |
+| Advertise | `Capabilities{}.with_retrieve({…})` | `s.advertise(Capability.Retrieve, {…})` | `s.advertise(Capability.Retrieve, {…})` |
+| Handle | concept-gated hook | `@s.on(Method.RETRIEVE)` | `s.on(Method.RETRIEVE, fn)` |
+| Serve | `srv.serve_stdio()` | `s.serve_stdio()` | `await s.serveStdio()` |
+
+<Info>
+Cross-language interop is not aspirational: the Python and Node test suites each
+include a case where their client drives the **C++** example server, and the
+conformance suite runs against all three servers over stdio and HTTP.
+</Info>

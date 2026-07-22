@@ -1,0 +1,540 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://1ay1.github.io/rcp/schema/rcp-1.0.json",
+  "title": "Retrieval Context Protocol 1.0",
+  "description": "Normative JSON Schema for all RCP/1 message shapes (SOTA-complete).",
+  "$defs": {
+    "PeerInfo": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "Capabilities": {
+      "type": "object",
+      "properties": {
+        "embed": {
+          "type": "object",
+          "properties": {
+            "dimension": { "type": "integer", "minimum": 1 },
+            "identity": { "type": "string" },
+            "batchLimit": { "type": "integer", "minimum": 1 },
+            "normalized": { "type": "boolean" },
+            "modalities": { "type": "array", "items": { "enum": ["text", "image", "audio", "code", "multimodal"] } }
+          }
+        },
+        "sparseEmbed": {
+          "type": "object",
+          "properties": {
+            "identity": { "type": "string" },
+            "vocabulary": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "multiVector": {
+          "type": "object",
+          "properties": {
+            "dimension": { "type": "integer", "minimum": 1 },
+            "identity": { "type": "string" },
+            "similarity": { "enum": ["dot", "cosine"] },
+            "modalities": { "type": "array", "items": { "enum": ["text", "image", "audio", "code", "multimodal"] } }
+          }
+        },
+        "rerank": {
+          "type": "object",
+          "properties": {
+            "methods": { "type": "array", "items": { "enum": ["cross-encoder", "colbert", "llm"] } },
+            "maxCandidates": { "type": "integer", "minimum": 1 },
+            "models": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "retrieve": {
+          "type": "object",
+          "properties": {
+            "maxK": { "type": "integer", "minimum": 1 },
+            "modes": { "type": "array", "items": { "enum": ["dense", "sparse", "hybrid"] } },
+            "modalities": { "type": "array", "items": { "enum": ["text", "image", "audio", "code", "multimodal"] } },
+            "fusion": { "type": "array", "items": { "enum": ["rrf", "weighted"] } },
+            "mmr": { "type": "boolean" },
+            "rerankBuiltin": { "type": "boolean" },
+            "deterministic": { "type": "boolean" },
+            "snapshots": { "type": "boolean" },
+            "defaultMode": { "enum": ["dense", "sparse", "hybrid"] }
+          }
+        },
+        "transform": {
+          "type": "object",
+          "properties": {
+            "methods": { "type": "array", "items": { "enum": ["rewrite", "hyde", "multi-query", "decompose", "step-back"] } }
+          }
+        },
+        "graph": {
+          "type": "object",
+          "properties": { "ops": { "type": "array", "items": { "type": "string" } } }
+        },
+        "index": {
+          "type": "object",
+          "properties": {
+            "writable": { "type": "boolean" },
+            "chunking": { "type": "boolean" },
+            "contextual": { "type": "boolean" }
+          }
+        },
+        "filter": {
+          "type": "object",
+          "properties": {
+            "fields": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "object", "additionalProperties": { "type": "string" } }
+              ]
+            },
+            "operators": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "streaming": { "type": "object" },
+        "pagination": { "type": "object" },
+        "citations": {
+          "oneOf": [ { "type": "boolean" }, { "type": "object" } ]
+        },
+        "log": { "type": "object", "properties": { "levels": { "type": "array", "items": { "type": "string" } } } },
+        "catalog": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "Content": {
+      "description": "A tagged content block for multimodal retrieval (spec §4.8).",
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["text", "image", "audio", "blob"] },
+        "text": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "data": { "type": "string", "contentEncoding": "base64" },
+        "uri": { "type": "string" }
+      }
+    },
+    "QueryInput": {
+      "description": "A query/passage: a bare string, one Content block, or an array of them.",
+      "oneOf": [
+        { "type": "string" },
+        { "$ref": "#/$defs/Content" },
+        { "type": "array", "items": { "$ref": "#/$defs/Content" } }
+      ]
+    },
+    "Citation": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "uri": { "type": "string" },
+        "title": { "type": "string" },
+        "start": { "type": "integer" },
+        "end": { "type": "integer" },
+        "page": { "type": "integer" }
+      }
+    },
+    "Trust": {
+      "type": "object",
+      "required": ["level"],
+      "properties": {
+        "level": { "enum": ["trusted", "community", "untrusted"] },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "Hit": {
+      "type": "object",
+      "required": ["id", "score"],
+      "properties": {
+        "id": { "type": ["string", "number"] },
+        "score": { "type": "number" },
+        "text": { "type": "string" },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/Content" } },
+        "modality": { "enum": ["text", "image", "audio", "code", "multimodal"] },
+        "meta": { "type": "object" },
+        "vector": { "type": "array", "items": { "type": "number" } },
+        "scores": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
+        "citation": { "$ref": "#/$defs/Citation" },
+        "trust": { "$ref": "#/$defs/Trust" },
+        "chunk": {
+          "type": "object",
+          "properties": {
+            "docId": { "type": "string" },
+            "index": { "type": "integer" },
+            "context": { "type": "string" }
+          }
+        }
+      }
+    },
+    "SparseVector": {
+      "type": "object",
+      "required": ["indices", "values"],
+      "properties": {
+        "indices": { "type": "array", "items": { "type": "integer" } },
+        "values": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "FilterClause": {
+      "type": "object",
+      "oneOf": [
+        {
+          "required": ["field", "op"],
+          "properties": {
+            "field": { "type": "string" },
+            "op": { "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "in", "nin", "contains", "exists"] },
+            "value": {}
+          }
+        },
+        { "required": ["and"], "properties": { "and": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/FilterClause" } } } },
+        { "required": ["or"], "properties": { "or": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/FilterClause" } } } },
+        { "required": ["not"], "properties": { "not": { "$ref": "#/$defs/FilterClause" } } }
+      ]
+    },
+    "JsonRpcRequest": {
+      "type": "object",
+      "required": ["jsonrpc", "method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "type": ["string", "number", "null"] },
+        "method": { "type": "string" },
+        "params": { "type": "object" }
+      }
+    },
+    "JsonRpcSuccess": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "type": ["string", "number", "null"] },
+        "result": { "type": "object" }
+      }
+    },
+    "JsonRpcError": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "error"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "type": ["string", "number", "null"] },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "integer" },
+            "message": { "type": "string" },
+            "data": {}
+          }
+        }
+      }
+    },
+    "ProgressNotification": {
+      "type": "object",
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "const": "notifications/progress" },
+        "params": {
+          "type": "object",
+          "required": ["progressToken"],
+          "properties": {
+            "progressToken": { "type": ["string", "integer"] },
+            "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+            "stage": { "type": "string" },
+            "message": { "type": "string" },
+            "partial": { "type": "object" }
+          }
+        }
+      }
+    },
+    "InitializeParams": {
+      "type": "object",
+      "required": ["protocolVersion"],
+      "properties": {
+        "protocolVersion": { "type": "integer", "minimum": 1 },
+        "client": { "$ref": "#/$defs/PeerInfo" },
+        "capabilities": { "$ref": "#/$defs/Capabilities" },
+        "_meta": { "type": "object" }
+      }
+    },
+    "InitializeResult": {
+      "type": "object",
+      "required": ["protocolVersion", "server", "capabilities"],
+      "properties": {
+        "protocolVersion": { "type": "integer", "minimum": 1 },
+        "server": { "$ref": "#/$defs/PeerInfo" },
+        "capabilities": { "$ref": "#/$defs/Capabilities" }
+      }
+    },
+    "EmbedParams": {
+      "type": "object",
+      "anyOf": [ { "required": ["inputs"] }, { "required": ["texts"] } ],
+      "properties": {
+        "inputs": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
+        "texts": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
+        "kind": { "enum": ["query", "document"] }
+      }
+    },
+    "EmbedResult": {
+      "type": "object",
+      "required": ["vectors"],
+      "properties": {
+        "vectors": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } }
+      }
+    },
+    "SparseEmbedResult": {
+      "type": "object",
+      "required": ["sparse"],
+      "properties": { "sparse": { "type": "array", "items": { "$ref": "#/$defs/SparseVector" } } }
+    },
+    "MultiVectorResult": {
+      "type": "object",
+      "required": ["matrices"],
+      "properties": {
+        "matrices": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } }
+        },
+        "dimension": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "RerankParams": {
+      "type": "object",
+      "required": ["query", "passages"],
+      "properties": {
+        "query": { "$ref": "#/$defs/QueryInput" },
+        "passages": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
+        "method": { "enum": ["cross-encoder", "colbert", "llm"] },
+        "model": { "type": "string" },
+        "topN": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "RerankResult": {
+      "type": "object",
+      "required": ["scores"],
+      "properties": {
+        "scores": { "type": "array", "items": { "type": "number" } },
+        "order": { "type": "array", "items": { "type": "integer" } }
+      }
+    },
+    "RetrieveParams": {
+      "type": "object",
+      "required": ["query", "k"],
+      "properties": {
+        "query": { "$ref": "#/$defs/QueryInput" },
+        "k": { "type": "integer", "minimum": 1 },
+        "mode": { "enum": ["dense", "sparse", "hybrid"] },
+        "modality": { "enum": ["text", "image", "audio", "code", "multimodal"] },
+        "candidateK": { "type": "integer", "minimum": 1 },
+        "fusion": {
+          "type": "object",
+          "properties": {
+            "method": { "enum": ["rrf", "weighted"] },
+            "weights": { "type": "object", "additionalProperties": { "type": "number" } },
+            "rrfK": { "type": "integer" }
+          }
+        },
+        "rerank": {
+          "oneOf": [
+            { "type": "object", "properties": { "method": { "enum": ["cross-encoder", "colbert", "llm"] }, "model": { "type": "string" }, "topN": { "type": "integer" } } },
+            { "const": false }
+          ]
+        },
+        "mmr": { "type": "object", "properties": { "lambda": { "type": "number", "minimum": 0, "maximum": 1 } } },
+        "rewrite": { "oneOf": [{ "enum": ["rewrite", "hyde", "multi-query", "decompose", "step-back"] }, { "const": false }] },
+        "filter": { "$ref": "#/$defs/FilterClause" },
+        "minScore": { "type": "number" },
+        "recency": { "type": "object", "properties": { "field": { "type": "string" }, "halfLifeDays": { "type": "number" } } },
+        "includeText": { "type": "boolean" },
+        "includeVectors": { "type": "boolean" },
+        "seed": { "type": "integer" },
+        "indexVersion": { "type": "string" },
+        "strict": { "type": "boolean" },
+        "cursor": { "type": "string" },
+        "_meta": { "type": "object" }
+      }
+    },
+    "RetrieveResult": {
+      "type": "object",
+      "required": ["hits"],
+      "properties": {
+        "hits": { "type": "array", "items": { "$ref": "#/$defs/Hit" } },
+        "nextCursor": { "type": "string" },
+        "indexVersion": { "type": "string" },
+        "usage": { "type": "object" },
+        "rewrittenQuery": { "type": "string" }
+      }
+    },
+    "TransformParams": {
+      "type": "object",
+      "required": ["query", "method"],
+      "properties": {
+        "query": { "type": "string" },
+        "method": { "enum": ["rewrite", "hyde", "multi-query", "decompose", "step-back"] },
+        "n": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "TransformResult": {
+      "type": "object",
+      "required": ["queries"],
+      "properties": {
+        "queries": { "type": "array", "items": { "type": "string" } },
+        "hypothetical": { "type": "string" }
+      }
+    },
+    "GraphParams": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op": { "enum": ["local", "global", "drift", "communities", "neighbors"] },
+        "query": { "type": "string" },
+        "k": { "type": "integer", "minimum": 1 },
+        "seedIds": { "type": "array", "items": { "type": "string" } },
+        "hops": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "IndexAddParams": {
+      "type": "object",
+      "required": ["documents"],
+      "properties": {
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "id": { "type": "string" },
+              "text": { "type": "string" },
+              "meta": { "type": "object" }
+            }
+          }
+        },
+        "chunk": { "type": "boolean" },
+        "contextual": { "type": "boolean" }
+      }
+    },
+    "IndexAddResult": {
+      "type": "object",
+      "required": ["ids"],
+      "properties": {
+        "ids": { "type": "array", "items": { "type": "string" } },
+        "chunks": { "type": "integer" }
+      }
+    },
+    "IndexDeleteParams": {
+      "type": "object",
+      "required": ["ids"],
+      "properties": { "ids": { "type": "array", "items": { "type": "string" } } }
+    },
+    "IndexDeleteResult": {
+      "type": "object",
+      "required": ["deleted"],
+      "properties": { "deleted": { "type": "integer", "minimum": 0 } }
+    },
+    "CatalogListParams": { "type": "object" },
+    "CatalogListResult": {
+      "type": "object",
+      "required": ["engines"],
+      "properties": {
+        "engines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "server", "capabilities"],
+            "properties": {
+              "id": { "type": "string" },
+              "server": { "$ref": "#/$defs/PeerInfo" },
+              "capabilities": { "$ref": "#/$defs/Capabilities" },
+              "endpoint": {
+                "type": "object",
+                "required": ["transport"],
+                "properties": {
+                  "transport": { "enum": ["stdio", "http"] },
+                  "url": { "type": "string" },
+                  "command": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "CancelNotification": {
+      "type": "object",
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "const": "notifications/cancel" },
+        "params": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": { "type": ["string", "number"] },
+            "reason": { "type": "string" }
+          }
+        }
+      }
+    },
+    "PingParams": {
+      "type": "object",
+      "properties": { "nonce": { "type": ["string", "number"] } }
+    },
+    "PingResult": {
+      "type": "object",
+      "properties": { "nonce": { "type": ["string", "number"] } }
+    },
+    "LogNotification": {
+      "type": "object",
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "const": "notifications/log" },
+        "params": {
+          "type": "object",
+          "required": ["level", "message"],
+          "properties": {
+            "level": { "enum": ["debug", "info", "notice", "warning", "error"] },
+            "message": { "type": "string" },
+            "logger": { "type": "string" },
+            "data": { "type": "object" },
+            "_meta": { "type": "object" }
+          }
+        }
+      }
+    },
+    "ErrorData": {
+      "type": "object",
+      "properties": {
+        "field": { "type": "string" },
+        "option": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "retryAfterMs": { "type": "integer", "minimum": 0 },
+        "detail": { "type": "string" }
+      }
+    },
+    "Registry": {
+      "type": "object",
+      "required": ["engines"],
+      "description": "An rcp.json engine registry (spec §16.1).",
+      "properties": {
+        "engines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "string" },
+              "transport": { "enum": ["stdio", "http"] },
+              "command": { "type": "array", "items": { "type": "string" } },
+              "url": { "type": "string" },
+              "priority": { "type": "integer" },
+              "weight": { "type": "number", "minimum": 0 },
+              "required": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

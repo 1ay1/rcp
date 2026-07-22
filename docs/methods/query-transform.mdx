@@ -1,0 +1,76 @@
+---
+title: Query Transform
+description: Rewrite, expand, or decompose a query — HyDE, multi-query, decomposition, and step-back — for clients driving an agentic loop.
+icon: wand-magic-sparkles
+---
+
+`query/transform` is gated by **`transform`**. It exposes query transformation as
+a standalone step so a client orchestrating its own agentic retrieval loop can
+plan queries before recall. (A server can also apply the same transforms inside
+[`retrieve`](/methods/retrieve) via the `rewrite` option.)
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 1, "method": "query/transform",
+  "params": { "query": "how do transformers scale?", "method": "multi-query", "n": 3 }
+}
+```
+
+```json Response
+{
+  "jsonrpc": "2.0", "id": 1, "result": {
+    "queries": [
+      "computational complexity of transformer attention",
+      "efficient transformer architectures for long sequences",
+      "scaling laws for transformer models"
+    ]
+  }
+}
+```
+</CodeGroup>
+
+## Params
+
+<ParamField path="query" type="string" required>
+  The original query.
+</ParamField>
+<ParamField path="method" type='"rewrite" | "hyde" | "multi-query" | "decompose" | "step-back"' required>
+  The transformation to apply. **MUST** be one of the advertised
+  `transform.methods`.
+</ParamField>
+<ParamField path="n" type="integer">
+  How many queries to produce (for `multi-query` / `decompose`).
+</ParamField>
+
+## Result
+
+<ResponseField name="queries" type="string[]">
+  The transformed queries. `multi-query`/`decompose` return several; `rewrite`
+  and `step-back` return one.
+</ResponseField>
+<ResponseField name="hypothetical" type="string">
+  For `hyde`, a hypothetical answer document the client then **embeds** and uses
+  as the search vector.
+</ResponseField>
+
+## The transformations
+
+<CardGroup cols={2}>
+  <Card title="rewrite" icon="pen">
+    Clean up and disambiguate a raw user query.
+  </Card>
+  <Card title="hyde" icon="lightbulb">
+    Generate a hypothetical answer; embed *it* instead of the question
+    (Hypothetical Document Embeddings).
+  </Card>
+  <Card title="multi-query" icon="clone">
+    Produce several paraphrases to widen recall, then fuse the result sets.
+  </Card>
+  <Card title="decompose" icon="diagram-next">
+    Break a complex question into answerable sub-questions.
+  </Card>
+  <Card title="step-back" icon="arrow-left">
+    Ask a more general "step-back" question to retrieve grounding principles.
+  </Card>
+</CardGroup>

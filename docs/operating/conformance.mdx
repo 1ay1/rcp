@@ -1,0 +1,80 @@
+---
+title: Conformance
+description: Three named conformance levels — L0 Base, L1 Retrieval, L2 SOTA — and a transport-agnostic test suite that validates any server in any language.
+icon: circle-check
+---
+
+RCP defines three named conformance levels. A server **MUST** state its level in
+`info`/`initialize` via `_meta.conformance` (`"L0"`, `"L1"`, or `"L2"`); clients
+use it as a coarse expectation, and **capabilities as the precise contract**.
+
+## Levels
+
+<AccordionGroup>
+  <Accordion title="L0 — Base (REQUIRED of every server)" icon="1" defaultOpen>
+    Answer `initialize`, `info`, and `ping` (the latter two at any time, echoing
+    a `ping` nonce); advertise at least one retrieval capability; reject
+    pre-`initialize` requests with `-32001`; reject unadvertised capability
+    methods (`-32003`), undefined methods (`-32004`), and unsupported options
+    (`-32005`); return well-formed JSON-RPC 2.0 echoing the request `id`; validate
+    params (`-32602`) instead of crashing; ignore unknown notifications; tolerate
+    unknown fields, capability keys, and `_meta`.
+  </Accordion>
+  <Accordion title="L1 — Retrieval (RECOMMENDED)" icon="2">
+    L0 **plus** `retrieve` with `modes: ["dense","sparse","hybrid"]`, `filter` and
+    `citations` support, consistent `Hit.score` (higher = more relevant), and
+    `k`/`minScore` honoured. The target for a general-purpose RAG backend.
+  </Accordion>
+  <Accordion title="L2 — SOTA (OPTIONAL)" icon="3">
+    L1 **plus** a selection of `rerank` (cross-encoder and/or ColBERT),
+    `multiVector` / late interaction, `graph`, `query/transform`, `streaming`, and
+    `pagination`. The frontier profile — hybrid + rerank + graph + multimodal.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+Levels are a **coarse** signal. The precise, machine-checkable contract is always
+the capability set a server advertises at `initialize`. A client should gate on
+`supports(...)`, not on the level string.
+</Note>
+
+## The test suite
+
+A transport-agnostic conformance suite validates **any** server, in **any**
+language, over stdio or HTTP:
+
+<CodeGroup>
+```sh Python engine (stdio)
+python3 conformance/check.py -- python3 examples/example_server.py
+```
+
+```sh C++ engine (stdio)
+python3 conformance/check.py -- ./sdk/cpp/example_server
+```
+
+```sh Node.js engine (stdio)
+python3 conformance/check.py -- node sdk/node/examples/example_server.js
+```
+
+```sh Any engine (HTTP)
+python3 conformance/check.py --http http://127.0.0.1:8000/rcp
+```
+</CodeGroup>
+
+All three reference example servers pass **10/10** over both stdio and HTTP, and
+every SDK's client drives every other SDK's server.
+
+## Conforming clients
+
+A conforming *client* must:
+
+<Steps>
+  <Step title="Initialize first">Send `initialize` before any gated method.</Step>
+  <Step title="Honour negotiation">Respect the negotiated protocol version.</Step>
+  <Step title="Gate on capabilities">Never call an unadvertised method.</Step>
+  <Step title="Correlate by id">Match responses to requests by `id`, not order.</Step>
+  <Step title="Tolerate dropped notifications">
+    Function correctly even if it drops every `notifications/progress` and
+    `notifications/log`.
+  </Step>
+</Steps>

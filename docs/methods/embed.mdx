@@ -1,0 +1,114 @@
+---
+title: Embedding
+description: Turn content into vectors — dense (embed), learned-sparse (embed/sparse), or multi-vector late-interaction (embed/multi).
+icon: vector-square
+---
+
+RCP exposes three embedding methods, one per vector family. A server advertises
+each independently, so a client can request exactly the representation it wants
+for a client-side ANN index or a custom pipeline.
+
+<CardGroup cols={3}>
+  <Card title="embed" icon="arrows-to-dot">
+    One dense vector per input. `embed` capability.
+  </Card>
+  <Card title="embed/sparse" icon="list-ol">
+    A learned-sparse term→weight vector (SPLADE). `sparseEmbed` capability.
+  </Card>
+  <Card title="embed/multi" icon="table-cells">
+    A matrix of per-token/per-patch vectors (ColBERT/ColPali). `multiVector`.
+  </Card>
+</CardGroup>
+
+## `embed` — dense
+
+Gated by **`embed`**. One vector per input, in order.
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 1, "method": "embed",
+  "params": { "inputs": ["attention is all you need", "the eiffel tower"], "kind": "document" }
+}
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 1, "result": { "vectors": [[0.01, -0.04, "…"], [0.07, 0.02, "…"]] } }
+```
+</CodeGroup>
+
+<ParamField path="inputs" type="(string | Content)[]" required>
+  Bare strings or [Content blocks](/concepts/message-format#content-blocks-modality).
+  A text-only server accepts only strings; a multimodal server that advertises
+  `embed.modalities` also accepts `image`/`audio` blocks.
+</ParamField>
+<ParamField path="kind" type='"query" | "document"'>
+  Lets asymmetric encoders (e5/BGE query vs passage prefixes) select the right
+  pooling.
+</ParamField>
+
+<ResponseField name="vectors" type="float[][]">
+  One vector per input, in the same order.
+</ResponseField>
+
+<Note>
+For backward compatibility a server **MUST** also accept the legacy field name
+`texts` as a synonym for `inputs`. Requests **SHOULD** respect `embed.batchLimit`.
+</Note>
+
+## `embed/sparse` — learned-sparse
+
+Gated by **`sparseEmbed`**. Each entry is a sparse vector over the model
+vocabulary (SPLADE-style term weights).
+
+<CodeGroup>
+```json Request
+{ "jsonrpc": "2.0", "id": 2, "method": "embed/sparse",
+  "params": { "texts": ["neural information retrieval"], "kind": "query" } }
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 2, "result": {
+    "sparse": [ { "indices": [1204, 5591, 88123], "values": [1.9, 0.7, 1.2] } ] } }
+```
+</CodeGroup>
+
+<ResponseField name="sparse" type="object[]">
+  One entry per input. `indices` are vocabulary ids; `values` are the learned
+  term weights. Search these with an inverted index.
+</ResponseField>
+
+## `embed/multi` — multi-vector (late interaction)
+
+Gated by **`multiVector`**. Each input yields a **matrix** of token- (ColBERT) or
+patch- (ColPali/ColQwen) level embeddings for late-interaction scoring.
+
+<CodeGroup>
+```json Request
+{ "jsonrpc": "2.0", "id": 3, "method": "embed/multi",
+  "params": { "inputs": ["late interaction retrieval"] } }
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 3, "result": {
+    "matrices": [ [[0.1, 0.2, "…"], [0.0, -0.1, "…"]] ], "dimension": 128 } }
+```
+</CodeGroup>
+
+The relevance of a document *D* to a query *Q* is the **MaxSim** sum — for each
+query vector, take its maximum similarity against any document vector, then sum:
+
+```
+MaxSim(Q, D) = Σ_{q ∈ Q}  max_{d ∈ D}  sim(q, d)          sim = dot or cosine
+```
+
+Clients score with MaxSim locally, or delegate via
+[`rerank` `method:"colbert"`](/methods/rerank). Servers **SHOULD** advertise
+`multiVector.similarity`. Visual-document servers advertise
+`multiVector.modalities:["image"]` and accept rendered pages as `image` Content
+blocks — each page yields one patch matrix.
+
+<Tip>
+Prefer these array-param methods over JSON-RPC [batching](/features/batching):
+they are inherently batched and far more efficient for throughput.
+</Tip>

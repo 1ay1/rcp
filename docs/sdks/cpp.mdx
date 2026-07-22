@@ -1,0 +1,97 @@
+---
+title: C++ SDK
+description: A header-only, type-theoretic C++23 SDK that pushes protocol invariants into the type system — proved at compile time.
+icon: c
+---
+
+The C++ SDK is **header-only** and **type-theoretic**: protocol invariants live
+in the type system and are proved at **compile time** — the build is the test
+runner.
+
+<CardGroup cols={2}>
+  <Card title="Refinement types" icon="ruler">
+    `TopK` cannot be `0`, `ProtocolVersion` is validated at construction,
+    `Score`/`Dimension` are not interchangeable.
+  </Card>
+  <Card title="Typestate Client" icon="lock">
+    Only constructible via a `connect*()` that runs the handshake; gated calls
+    fail *client-side* with `CapabilityMissing` before any I/O.
+  </Card>
+  <Card title="Concept-gated Server<H>" icon="shield">
+    A handler advertises capabilities and implements matching hooks; `if
+    constexpr` dispatch makes an advertised-but-unimplemented method a typed
+    error, never a crash.
+  </Card>
+  <Card title="Total Result<T>" icon="circle-check">
+    `Result<T> = std::expected<T, Error>` everywhere — no exceptions for control
+    flow. `static_assert` proofs ship in `test_types.cpp`.
+  </Card>
+</CardGroup>
+
+## Requirements
+
+A C++23 compiler with `std::expected` (GCC 13+ or recent Clang). Header-only —
+just add `sdk/cpp/include` to your include path and `#include "rcp.hpp"`.
+
+## Server
+
+```cpp
+#include "rcp.hpp"
+using namespace rcp;
+
+struct Engine {
+    PeerInfo info() const { return {"my-engine", "1.0"}; }
+    Capabilities capabilities() const {
+        return Capabilities{}
+            .with_retrieve({{"maxK", 200}, {"modes", {"dense", "hybrid"}}})
+            .with_embed(Dimension{384}, "bge-small-en");
+    }
+    Result<Json> retrieve(const Json& p) {
+        auto hits = my_index.search(p.at("query"), p.value("k", 10));
+        return Json{{"hits", hits}};
+    }
+    Result<Json> embed(const Json& p) {
+        return Json{{"vectors", embed_all(p.at("inputs"))}};
+    }
+};
+
+int main() { Server{Engine{}}.serve_stdio(); }   // or .serve_http(8000)
+```
+
+Which hooks you define is detected at compile time; a capability you advertise
+but don't implement resolves to a typed `CapabilityMissing`, not a null pointer.
+
+## Client
+
+```cpp
+auto r = Client::connect_stdio({"./my_engine"});
+if (!r) { /* r.error().code / .message */ return 1; }
+Client c = std::move(*r);
+
+if (c.supports(Capability::Retrieve)) {
+    auto k = TopK::make(3);                 // refinement type: make(0) fails
+    auto hits = c.retrieve("eiffel tower", *k);
+    if (hits) for (auto& h : *hits) std::printf("%s %.3f\n", h.id.c_str(), h.score.get());
+}
+```
+
+Every call returns `Result<T>`; nothing throws across the API boundary.
+
+## Build & test
+
+```sh
+cd sdk/cpp
+make test        # static_assert proofs + runtime checks
+make examples    # example_server / client / selector / federation
+```
+
+Validate against the conformance suite:
+
+```sh
+python3 conformance/check.py -- ./sdk/cpp/example_server
+```
+
+<Info>
+The SDK also ships a `Selector` (pick one backend) and a `Federation` (fan out +
+RRF fuse) — see [Federation](/features/federation).
+</Info>

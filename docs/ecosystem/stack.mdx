@@ -1,0 +1,50 @@
+---
+title: The agent stack
+description: Where RCP sits alongside MCP and ACP in a modern agent architecture — the third interoperability seam.
+icon: layer-group
+---
+
+Modern agent architectures have three interoperability seams. RCP fills the one
+that was missing.
+
+```
+  client  ⇄  ACP  ⇄  agent  ⇄  MCP  ⇄  tools
+                       │
+                       └──────  RCP  ⇄  retrieval engine(s)
+```
+
+<CardGroup cols={3}>
+  <Card title="ACP" icon="window-maximize" href="https://agentclientprotocol.com">
+    The **Agent Client Protocol**. Lets a code editor / IDE drive a coding agent.
+    *(editor ⇄ agent)*
+  </Card>
+  <Card title="MCP" icon="plug" href="https://modelcontextprotocol.io">
+    The **Model Context Protocol**. Lets an agent call tools and resources.
+    *(agent ⇄ tools)*
+  </Card>
+  <Card title="RCP" icon="magnifying-glass" href="/get-started/introduction">
+    The **Retrieval Context Protocol**. Lets any client pull grounding context
+    from any RAG engine. *(agent ⇄ retrieval)*
+  </Card>
+</CardGroup>
+
+## One shape, three seams
+
+All three share JSON-RPC framing, an `initialize`/capabilities handshake, `_meta`
+extensibility, and cursor-based pagination. Learn one and you are immediately
+productive in the others.
+
+| | ACP | MCP | RCP |
+|---|-----|-----|-----|
+| **Connects** | editor ⇄ agent | agent ⇄ tools | agent ⇄ retrieval |
+| **Framing** | JSON-RPC 2.0 | JSON-RPC 2.0 | JSON-RPC 2.0 |
+| **Handshake** | `initialize` + caps | `initialize` + caps | `initialize` + caps |
+| **Extensibility** | `_meta` | `_meta` | `_meta` |
+| **Core noun** | sessions, prompts | tools, resources | embed, retrieve, rerank, graph |
+
+<Info>
+An agent runtime commonly speaks **all three at once**: ACP to its editor, MCP to
+its tools, and RCP to its knowledge bases. See
+[Relationship to MCP & ACP](/ecosystem/mcp-acp) for why retrieval earns its own
+protocol rather than riding on MCP tools.
+</Info>

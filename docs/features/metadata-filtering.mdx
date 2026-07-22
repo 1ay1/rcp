@@ -1,0 +1,70 @@
+---
+title: Metadata Filtering
+description: Restrict retrieval with a small, safe boolean tree over document metadata — validated against the server's advertised fields.
+icon: filter
+---
+
+When a server advertises the **`filter`** capability, `retrieve` (and
+`index/delete`) accept a small boolean tree over document metadata. Fields and
+operators are validated against what the server advertised, so a filter is both
+expressive and safe.
+
+```json
+{ "and": [
+    { "field": "lang", "op": "eq", "value": "en" },
+    { "or": [
+        { "field": "year", "op": "gte", "value": 2023 },
+        { "field": "tag",  "op": "in",  "value": ["news", "blog"] } ] } ] }
+```
+
+## Structure
+
+A filter node is either a **combinator** (`and` / `or` / `not`, nesting
+arbitrarily) or a **leaf** (`{ field, op, value }`).
+
+<ParamField path="and / or" type="node[]">
+  Boolean combinators over child nodes. An **empty** `and`/`or` array is
+  `-32602`.
+</ParamField>
+<ParamField path="not" type="node">
+  Negates a single child node.
+</ParamField>
+<ParamField path="field" type="string">
+  A metadata field name — **MUST** be one the server advertised in
+  `filter.fields`, else `-32602`.
+</ParamField>
+<ParamField path="op" type="string">
+  A comparison operator (see below). Must be in the advertised `filter.operators`,
+  else `-32005`.
+</ParamField>
+
+## Operators
+
+| Operator | `value` shape | Applies to | Meaning |
+|----------|---------------|------------|---------|
+| `eq`, `ne` | scalar (string / number / bool) | any | (in)equality |
+| `gt`, `gte`, `lt`, `lte` | number or `date` | `int` / `float` / `date` | ordered comparison |
+| `in`, `nin` | array of scalars | any | set membership / exclusion |
+| `contains` | scalar | `text` (substring) or array-valued field (element membership) | containment |
+| `exists` | boolean | any | field present (`true`) or absent (`false`) |
+
+## Field types
+
+A server **SHOULD** advertise `filter.fields` as a map of field name → type:
+`keyword` (exact string), `text` (tokenised), `int`, `float`, `bool`, `date`
+(an RFC 3339 string or epoch-ms), or `geo`. The allowed operators and the JSON
+type of `value` depend on the field type.
+
+<Warning>
+A server **MUST** return `-32602` (with `error.data.field`) when a `value`'s JSON
+type is incompatible with the field type, or the field is not advertised. This is
+also a **security boundary**: field names are validated precisely because a
+silently-ignored filter would return wrong — possibly unauthorised — results.
+Servers **MUST** parameterise filters into the backing query engine, never
+string-concatenate. See [Security](/operating/security).
+</Warning>
+
+<Info>
+Unless a server documents otherwise, string comparison is case-sensitive and
+byte-ordered.
+</Info>

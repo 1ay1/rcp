@@ -1,0 +1,80 @@
+---
+title: Session Lifecycle
+description: How an RCP connection begins, runs, and ends — from initialize through shutdown, cancellation, and liveness.
+icon: arrows-rotate
+---
+
+An RCP connection has a simple, strict lifecycle: **initialize once, call many,
+shut down.**
+
+```
+Client                              Server
+  │  ── initialize ─────────────────▶ │  negotiate version, cache caps
+  │  ◀──────────────── result ─────── │
+  │  ── query/transform (optional) ─▶ │  agentic query planning
+  │  ── retrieve (hybrid+rerank+mmr) ▶ │  full pipeline
+  │  ◀── notifications/progress ×N ── │  (if streaming)
+  │  ◀──────────────── result ─────── │
+  │  ── shutdown ───────────────────▶ │
+```
+
+## Phases
+
+<Steps>
+  <Step title="Initialize">
+    The client's first request. Negotiates the version and exchanges
+    capabilities. A server **MUST** reject any non-`initialize`/`info`/`ping`
+    request that arrives before a successful `initialize` with `-32001`
+    (`NotInitialized`). See [Initialization](/concepts/initialization).
+  </Step>
+  <Step title="Operate">
+    The client calls capability-gated methods, optionally pipelining several at
+    once and correlating responses by `id`. Long calls may stream
+    [progress](/features/streaming-progress).
+  </Step>
+  <Step title="Shut down">
+    The client sends `shutdown` (`params {}` → `result {}`). Over stdio, **EOF on
+    stdin is an equivalent shutdown** — the server should finish in-flight work,
+    flush responses, and exit.
+  </Step>
+</Steps>
+
+## Cancellation
+
+A client **MAY** abandon an in-flight request (a long `retrieve`, `rerank`, or
+`graph`) with a `notifications/cancel` notification — no `id`, no direct
+response:
+
+```json
+{ "jsonrpc": "2.0", "method": "notifications/cancel",
+  "params": { "id": 7, "reason": "user aborted" } }
+```
+
+<Warning>
+Cancellation is **best-effort** and racy. The server still sends exactly one
+response for the cancelled request — either the normal result (if it had already
+finished) or a `-32006` (`Cancelled`) error. A client **MUST** tolerate receiving
+a full successful result after it sent a cancel.
+</Warning>
+
+Cancelling an unknown or already-answered `id` is a no-op. Cancellation needs no
+capability — it is always available.
+
+## Liveness — `ping`
+
+`ping` is a state-free round-trip check, callable at any time (even before
+`initialize`). The server **MUST** echo any `nonce` it received.
+
+<CodeGroup>
+```json Request
+{ "jsonrpc": "2.0", "id": 5, "method": "ping", "params": { "nonce": 123 } }
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 5, "result": { "nonce": 123 } }
+```
+</CodeGroup>
+
+Clients use `ping` for keep-alive on long-lived connections, to measure
+round-trip latency, and — inside a [Selector](/features/federation) — as the
+liveness probe behind primary → secondary failover.

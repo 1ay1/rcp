@@ -1,0 +1,48 @@
+---
+title: Changelog
+description: What changed in each revision of the RCP specification.
+icon: clock-rotate-left
+---
+
+RCP/1 is **stable**. Changes within the major version are additive and
+capability-discovered; the wire never breaks under you.
+
+<Update label="RCP/1 1.0 · ed." description="2025 — editorial revision">
+  Clarifications and one notification rename. **No changes to any
+  request/response shape.**
+
+  - Normative timestamp/date encoding, score-scale & comparability rules, and
+    `trust.score ∈ [0,1]` (§4.6).
+  - `filter` field-type × operator value-typing table and empty-combinator
+    handling (§8).
+  - Client `capabilities` semantics and tightened version-negotiation wording
+    (§7.1).
+  - `embed` accepts Content blocks via `inputs`, with `texts` retained as a
+    legacy synonym (§7.3).
+  - Explicit `strict` default and the `candidateK ≥ rerank.topN ≥ k` funnel
+    invariant (§7.7).
+  - `progressToken` typing/uniqueness (§9) and JSON-RPC batch edge cases (§11).
+  - **Rename:** the log notification method `log` → `notifications/log`, and the
+    `notifications/*` namespace is now reserved (§4.5, §17.1). The `log`
+    *capability* key is unchanged.
+</Update>
+
+<Update label="RCP/1 1.0" description="2025 — initial stable release">
+  The first stable release of the Retrieval Context Protocol.
+
+  - Core methods: `initialize`, `info`, `embed`, `embed/sparse`, `embed/multi`,
+    `rerank`, `retrieve`, `query/transform`, `graph`, `index/add`,
+    `index/delete`, `catalog/list`, `shutdown`, `notifications/cancel`, `ping`.
+  - Capability negotiation; stdio + HTTP(+SSE) transports.
+  - A Content/modality model for multimodal & visual-document retrieval.
+  - Metadata filtering, streaming/progress, `notifications/log` observability,
+    pagination, batching.
+  - Structured errors with retryability; determinism (`seed` / `indexVersion`).
+  - A full threat model and federation (registry + RRF/weighted fusion).
+  - Native **C++**, **Python**, and **Node.js** SDKs.
+</Update>
+
+<Info>
+The authoritative change log lives in
+[Appendix E of the specification](https://github.com/1ay1/rcp/blob/main/spec/rcp-1.0.md#appendix-e--change-log).
+</Info>

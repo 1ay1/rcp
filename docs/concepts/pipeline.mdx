@@ -1,0 +1,60 @@
+---
+title: The retrieval pipeline
+description: RCP is shaped around the canonical production RAG pipeline — each stage maps to a protocol surface a server can offer independently.
+icon: diagram-project
+---
+
+RCP is shaped around the canonical production RAG pipeline, so **each stage maps
+to a protocol surface**. A server implements whichever stages it offers, and a
+client either calls one stage at a time or lets a single `retrieve` run the whole
+thing.
+
+```
+query ─▶ [transform] ─▶ [retrieve: dense|sparse|hybrid] ─▶ [fuse]
+      ─▶ [rerank: cross-encoder|colbert] ─▶ [diversify: mmr]
+      ─▶ [pack + cite] ─▶ hits
+```
+
+## Stage → surface map
+
+| Stage | Method / option | Capability |
+|-------|-----------------|------------|
+| Query transformation | `query/transform`, or `retrieve.rewrite` | `transform` |
+| Candidate retrieval | `retrieve` with `mode` = `dense`/`sparse`/`hybrid` | `retrieve` |
+| Embedding (for client-side ANN) | `embed`, `embed/sparse`, `embed/multi` | `embed`, `sparseEmbed`, `multiVector` |
+| Fusion | `retrieve.fusion` = `rrf`/`weighted` | (part of `retrieve.hybrid`) |
+| Reranking | `rerank` (`method` = `cross-encoder`/`colbert`) | `rerank` |
+| Diversification | `retrieve.mmr` | `retrieve.mmr` |
+| Graph retrieval | `graph` (`op` = `local`/`global`/`drift`) | `graph` |
+| Indexing | `index/add`, `index/delete` | `index` |
+
+## Two ways to drive it
+
+<CardGroup cols={2}>
+  <Card title="Let the server run it" icon="wand-magic-sparkles">
+    A client that just wants "the best hits for this query" calls `retrieve` and
+    lets the server run its full pipeline — transform, recall, fuse, rerank, MMR,
+    cite. One request, one ranked list.
+  </Card>
+  <Card title="Orchestrate it yourself" icon="sliders">
+    A client building an agentic loop calls the stages individually —
+    `query/transform` to plan, `embed` for a client-side ANN index, `rerank` to
+    rescore, `graph` to walk relationships.
+  </Card>
+</CardGroup>
+
+## The funnel invariant
+
+The three result-size knobs on `retrieve` form a funnel and **MUST** satisfy:
+
+```
+candidateK  ≥  rerank.topN  ≥  k
+```
+
+The recall stage produces `candidateK` candidates, the reranker rescores the top
+`rerank.topN` of them, and the server returns the best `k`. This is why a good
+`retrieve` implementation is *cheap-and-wide then precise-and-narrow*.
+
+<Card title="See it end to end" icon="play" href="/methods/retrieve">
+  The `retrieve` method drives every stage of this pipeline through one call.
+</Card>

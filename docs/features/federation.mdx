@@ -1,0 +1,114 @@
+---
+title: Federation & Selector
+description: Target one backend or fuse many — both layer on the core retrieve handshake with zero new server obligations, driven from one rcp.json registry.
+icon: diagram-project
+---
+
+RCP is point-to-point: one server answers for its own index. Querying **all** the
+engines you can reach is a **client** concern, layered on the core methods with
+**zero new server obligations**. There are two routing models, both drivable from
+a single `rcp.json` registry.
+
+| Model | Use it when | API |
+|-------|-------------|-----|
+| **Selector** | you have several backends and want to pick **one** — by id, by required capability, or by priority with liveness fallback (lazy connect) | `Selector.load("rcp.json").select_primary()` |
+| **Federation** | you want to query **all** reachable engines concurrently and fuse the ranked lists with Reciprocal Rank Fusion (origin-tagged hits) | `Federation::from_registry_file("rcp.json")` |
+
+## The registry — `rcp.json`
+
+```json
+{
+  "engines": [
+    { "id": "docs", "transport": "stdio", "command": ["python3", "docs_server.py"], "priority": 10 },
+    { "id": "web",  "transport": "http",  "url": "http://127.0.0.1:8000/rcp", "weight": 1.5 },
+    { "id": "code", "transport": "stdio", "command": ["rcp-code-engine"], "required": false }
+  ]
+}
+```
+
+<ParamField path="id" type="string" required>
+  A client-local label used to tag fused hits by origin (`meta.engine`).
+</ParamField>
+<ParamField path="transport" type='"stdio" | "http"' required>
+  With `command` (stdio) or `url` (http).
+</ParamField>
+<ParamField path="priority" type="integer" default="0">
+  Higher wins for Selector's primary → secondary fallback.
+</ParamField>
+<ParamField path="weight" type="float" default="1.0">
+  Scales the engine's contribution during fusion.
+</ParamField>
+<ParamField path="required" type="boolean" default="false">
+  If `true`, a connect/query failure fails the whole federated query instead of
+  being skipped.
+</ParamField>
+
+Discovery composes with the [`catalog`](/methods/catalog) capability: a registry
+entry can point at an aggregator that enumerates further engines via
+`catalog/list`.
+
+## Selector — pick one
+
+Connects **lazily** and, on priority selection, falls back to the next live
+engine if the primary fails its connect + handshake. This makes a multi-backend
+deployment resilient without the client writing any failover glue.
+
+<CodeGroup>
+```python Python
+sel = rcp.Selector.load("rcp.json")
+c = sel.select_capable(rcp.Capability.Retrieve)   # highest-priority live engine that can retrieve
+for h in c.retrieve("query", k=5):
+    print(h["id"], h["score"])
+```
+
+```js Node.js
+const sel = rcp.Selector.load("rcp.json");
+const c = await sel.selectCapable(rcp.Capability.Retrieve);
+for (const h of await c.retrieve("query", 5)) console.log(h.id, h.score);
+```
+</CodeGroup>
+
+## Federation — fuse many
+
+A federated `retrieve(query, k)` fans out `retrieve` to every engine that
+advertises it, concurrently. Engines lacking the capability are skipped (not an
+error); a slow non-`required` engine is dropped after a client-side deadline so
+one bad backend can't stall the query.
+
+### Reciprocal Rank Fusion
+
+The **default and recommended** fusion is RRF (Cormack et al. 2009), which needs
+only **ranks** — not comparable scores — so it is robust across heterogeneous
+engines:
+
+```
+RRF(d) = Σ_engine  weight_engine / (rrfK + rank_engine(d))          rrfK default 60
+```
+
+where `rank_engine(d)` is the 1-based position of document `d` in that engine's
+list (engines that didn't return `d` contribute nothing). The fused list is
+sorted by descending `RRF(d)` and truncated to `k`.
+
+<Warning>
+**Never fuse raw scores directly** — scores from different scorers are not
+comparable. If you must use weighted score fusion, min-max normalise per engine
+to `[0,1]` first. RRF is preferred by default precisely because it sidesteps this
+footgun.
+</Warning>
+
+### Determinism & dedup
+
+- **Tie-breaking** is deterministic: order by (1) higher fused score, then (2)
+  higher summed weight, then (3) lexicographically smaller stringified `id` — a
+  total order independent of engine response arrival.
+- **Deduplication** keys on the stringified `Hit.id`. When two hits collapse, the
+  fused hit **SHOULD** keep the richest body and merge `meta`. Each fused hit
+  carries its origin in `meta.engine`.
+
+## Federated capabilities
+
+A client's *effective* capability set over a federation is the **union** of its
+engines' capabilities (it can `embed` if any engine can); its *guaranteed* set is
+the **intersection**. A federated `retrieve` runs against the subset advertising
+`retrieve`; a federated `graph` op against those advertising it. Reference SDKs
+expose both a per-engine handle and a `Federation` facade.

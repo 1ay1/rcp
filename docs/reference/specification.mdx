@@ -1,0 +1,110 @@
+---
+title: Specification
+description: How to read RCP/1 — the section-by-section map into these docs, the normative document, and a complete worked session.
+icon: book
+---
+
+RCP/1 is **stable**. These documentation pages *are* the readable specification —
+each protocol concept has its own page. This page is the map: it links every part
+of the normative document to the page that explains it, states the conventions,
+and shows a complete session end to end.
+
+<CardGroup cols={2}>
+  <Card title="Normative document" icon="scroll" href="https://github.com/1ay1/rcp/blob/main/spec/rcp-1.0.md">
+    `spec/rcp-1.0.md` — the single source of truth, RFC-2119 + JSON-RPC 2.0.
+  </Card>
+  <Card title="JSON Schema" icon="brackets-curly" href="/reference/schema">
+    Draft 2020-12 schema for every message shape.
+  </Card>
+</CardGroup>
+
+## Conventions
+
+The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**,
+**MAY**, and **OPTIONAL** are used as defined in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)
+and [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174) — and only when in **ALL
+CAPS**. All messages are [JSON-RPC 2.0](https://www.jsonrpc.org/specification);
+all bytes are UTF-8 JSON.
+
+## Section map
+
+| Spec § | Topic | Read it here |
+|--------|-------|--------------|
+| §1–§2 | Goals, roles | [Introduction](/get-started/introduction), [Architecture](/get-started/architecture) |
+| §3 | Retrieval pipeline model | [The retrieval pipeline](/concepts/pipeline) |
+| §4 | Message format, `_meta`, Content blocks | [Message Format](/concepts/message-format) |
+| §5 | Transports (stdio, HTTP, SSE) | [Transports](/concepts/transports) |
+| §6 | Capabilities | [Capabilities](/concepts/capabilities) |
+| §7.1 | `initialize` / `info` | [Initialization](/concepts/initialization) |
+| §7.3 | `embed` / `embed/sparse` / `embed/multi` | [Embedding](/methods/embed) |
+| §7.5 | `rerank` | [Rerank](/methods/rerank) |
+| §7.7 | `retrieve` | [Retrieve](/methods/retrieve) |
+| §7.8 | `query/transform` | [Query Transform](/methods/query-transform) |
+| §7.9 | `graph` | [Graph](/methods/graph) |
+| §7.10–§7.11 | `index/add` / `index/delete` | [Indexing](/methods/index) |
+| §7.12 | `catalog/list` | [Catalog](/methods/catalog) |
+| §7.14–§7.15 | `cancel`, `ping`, `shutdown` | [Lifecycle](/concepts/lifecycle) |
+| §8 | Metadata filtering | [Metadata Filtering](/features/metadata-filtering) |
+| §9 | Streaming & progress | [Streaming & Progress](/features/streaming-progress) |
+| §10 | Pagination | [Pagination](/features/pagination) |
+| §11 | Batching | [Batching](/features/batching) |
+| §12 | Errors | [Errors](/concepts/errors) |
+| §13 | Session lifecycle | [Lifecycle](/concepts/lifecycle) |
+| §14 | Conformance | [Conformance](/operating/conformance) |
+| §15 | Security | [Security](/operating/security) |
+| §16 | Federation | [Federation & Selector](/features/federation) |
+| §17 | Observability | [Observability](/features/observability) |
+
+## Mapping SOTA techniques to RCP
+
+Every mainstream retrieval technique maps onto an RCP surface — the protocol was
+designed backwards from the state of the art:
+
+| Technique | RCP surface |
+|-----------|-------------|
+| BM25 / lexical | `retrieve mode:"sparse"` |
+| Dense bi-encoder (e5/BGE/GTE) | `retrieve mode:"dense"`, or `embed` for client-side ANN |
+| Learned-sparse (SPLADE) | `sparseEmbed` + `retrieve mode:"sparse"` |
+| Hybrid + RRF | `retrieve mode:"hybrid", fusion:{method:"rrf"}` |
+| Cross-encoder rerank | `rerank method:"cross-encoder"` or `retrieve.rerank` |
+| Late interaction (ColBERT) | `multiVector` + `rerank method:"colbert"` |
+| Visual-document retrieval (ColPali/ColQwen) | `multiVector modalities:["image"]`, `image` Content blocks |
+| Matryoshka / truncatable embeddings | `embed.dimension` advertised; client truncates |
+| MMR diversification | `retrieve.mmr` |
+| Query rewrite / HyDE / multi-query / step-back | `query/transform` or `retrieve.rewrite` |
+| Multi-hop / agentic | client loop over `query/transform` + `retrieve` + `graph:"drift"` |
+| GraphRAG local/global | `graph op:"local"\|"global"` |
+| Contextual retrieval (Anthropic) | `index/add contextual:true` |
+| Citations / provenance | `citations`, `Hit.citation`, `Hit.trust` |
+| Freshness / recency | `retrieve.recency` |
+| Reproducible eval | `retrieve.seed`, `retrieve.indexVersion` |
+| Multi-backend fan-out + fusion | [Federation](/features/federation), RRF / weighted |
+
+## A worked session
+
+A complete stdio session against a SOTA server — handshake, a hybrid + rerank +
+MMR retrieval with a filter and a progress stream, a cancelled call, and
+shutdown. `→` is client→server, `←` is server→client; one JSON object per line.
+
+```json
+→ {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"client":{"name":"my-app","version":"0.4"}}}
+← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"server":{"name":"acme-rag","version":"2.1"},"capabilities":{"retrieve":{"maxK":200,"modes":["dense","sparse","hybrid"],"citations":true},"rerank":{"methods":["cross-encoder","colbert"]},"filter":{"fields":{"year":"int","lang":"keyword"}},"streaming":{}}}}
+
+→ {"jsonrpc":"2.0","id":2,"method":"retrieve","params":{"query":"transformer attention complexity","k":5,"mode":"hybrid","rerank":{"method":"cross-encoder","topN":100},"mmr":{"lambda":0.5},"filter":{"and":[{"field":"lang","op":"eq","value":"en"},{"field":"year","op":"gte","value":2017}]},"_meta":{"progressToken":"t2"}}}
+← {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"t2","progress":0.4,"message":"recall"}}
+← {"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":"t2","progress":0.8,"message":"rerank"}}
+← {"jsonrpc":"2.0","id":2,"result":{"hits":[{"id":"arxiv:1706.03762#3","score":0.94,"text":"Attention is all you need …","citation":{"uri":"https://arxiv.org/abs/1706.03762","title":"Attention Is All You Need"},"meta":{"year":2017}}]}}
+
+→ {"jsonrpc":"2.0","id":3,"method":"graph","params":{"op":"global","query":"survey of efficient attention"}}
+→ {"jsonrpc":"2.0","method":"notifications/cancel","params":{"id":3,"reason":"user navigated away"}}
+← {"jsonrpc":"2.0","id":3,"error":{"code":-32006,"message":"cancelled"}}
+
+→ {"jsonrpc":"2.0","id":4,"method":"shutdown","params":{}}
+← {"jsonrpc":"2.0","id":4,"result":{}}
+```
+
+<Info>
+For evaluation and quality (Recall@k, MRR, nDCG@k, MAP) and the reproducibility
+handles behind them, see the normative
+[Appendix F](https://github.com/1ay1/rcp/blob/main/spec/rcp-1.0.md#appendix-f--evaluation--quality).
+</Info>

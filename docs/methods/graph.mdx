@@ -1,0 +1,79 @@
+---
+title: Graph
+description: GraphRAG — local entity-centric retrieval, global community summaries, and drift search over a knowledge graph.
+icon: share-nodes
+---
+
+`graph` is gated by **`graph`**. It exposes GraphRAG-style retrieval over a
+knowledge graph the server maintains, selected by an `op`. Servers advertise the
+ops they support in `graph.ops`.
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 1, "method": "graph",
+  "params": { "op": "local", "query": "who influenced Alan Turing?", "k": 5 }
+}
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 1, "result": { "hits": [ { "id": "e:turing", "score": 0.9, "text": "…" } ] } }
+```
+</CodeGroup>
+
+## Params
+
+<ParamField path="op" type='"local" | "global" | "drift" | "communities" | "neighbors"' required>
+  The graph operation. **MUST** be one of the advertised `graph.ops`.
+</ParamField>
+<ParamField path="query" type="string">
+  The natural-language query (for `local`, `global`, `drift`).
+</ParamField>
+<ParamField path="k" type="integer">
+  Result count where applicable.
+</ParamField>
+<ParamField path="node" type="string | number">
+  A node id (for `neighbors`).
+</ParamField>
+
+## Operations
+
+<CardGroup cols={2}>
+  <Card title="local" icon="location-dot">
+    Entity-centric retrieval: find the entities and relationships closest to the
+    query and gather their neighbourhood. Returns `hits`.
+  </Card>
+  <Card title="global" icon="earth-americas">
+    Map-reduce over precomputed **community summaries** for corpus-wide,
+    thematic "sensemaking" questions. Returns a `summary` and `communities`.
+  </Card>
+  <Card title="drift" icon="route">
+    Dynamic Reasoning and Inference over a Fuzzy Trace — blends local and global,
+    following the graph as reasoning unfolds.
+  </Card>
+  <Card title="communities / neighbors" icon="circle-nodes">
+    `communities` lists detected communities; `neighbors` expands the adjacency
+    of a given `node`.
+  </Card>
+</CardGroup>
+
+## Result
+
+Shapes depend on the op. Entity-centric ops (`local`, `drift`, `neighbors`)
+return **`hits`** with the same [Hit shape](/methods/retrieve#the-hit-shape) as
+`retrieve`. Corpus-wide ops (`global`, `communities`) return a **`summary`**
+string and a **`communities`** array.
+
+<CodeGroup>
+```json op: "global"
+{ "result": {
+    "summary": "The corpus centres on three research communities …",
+    "communities": [ { "id": "c0", "title": "Deep learning", "size": 214 } ] } }
+```
+</CodeGroup>
+
+<Info>
+GraphRAG unifies local (entity) and global (thematic) retrieval under one method
+so a client can ask both "what connects X and Y?" and "what are the big themes?"
+without a second protocol.
+</Info>

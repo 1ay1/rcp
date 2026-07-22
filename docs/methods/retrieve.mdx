@@ -1,0 +1,198 @@
+---
+title: Retrieve
+description: The workhorse. One call drives the server's whole pipeline — transform, hybrid recall, fusion, rerank, MMR, recency, filtering, and citations.
+icon: magnifying-glass
+---
+
+`retrieve` is gated by **`retrieve`** and is the method most clients use. A
+single call can drive the server's entire [pipeline](/concepts/pipeline) — query
+transform, hybrid recall, fusion, rerank, MMR diversification, recency weighting,
+metadata filtering, and citation assembly. Every option beyond `query`/`k` is
+optional and honoured only within the advertised `retrieve` capability.
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 2, "method": "retrieve",
+  "params": {
+    "query": "transformer attention complexity",
+    "k": 5,
+    "mode": "hybrid",
+    "rerank": { "method": "cross-encoder", "topN": 100 },
+    "mmr": { "lambda": 0.5 },
+    "filter": { "and": [
+      { "field": "lang", "op": "eq", "value": "en" },
+      { "field": "year", "op": "gte", "value": 2017 }
+    ] },
+    "_meta": { "progressToken": "t2" }
+  }
+}
+```
+
+```json Response
+{
+  "jsonrpc": "2.0", "id": 2, "result": {
+    "hits": [
+      { "id": "arxiv:1706.03762#3", "score": 0.94,
+        "text": "Attention is all you need …",
+        "citation": { "uri": "https://arxiv.org/abs/1706.03762", "title": "Attention Is All You Need" },
+        "meta": { "year": 2017 } }
+    ],
+    "usage": { "candidates": 100, "reranked": 100, "latencyMs": 42 }
+  }
+}
+```
+</CodeGroup>
+
+## Core params
+
+<ParamField path="query" type="string | Content | Content[]" required>
+  The query — a bare string, or [Content block(s)](/concepts/message-format#content-blocks-modality)
+  for multimodal retrieval.
+</ParamField>
+<ParamField path="k" type="integer" default="10">
+  The final number of hits to return. Clamped to `retrieve.maxK`.
+</ParamField>
+<ParamField path="mode" type='"dense" | "sparse" | "hybrid"'>
+  Retrieval mode. **MUST** be one of the advertised `retrieve.modes`.
+</ParamField>
+<ParamField path="modality" type='"text" | "image" | "audio" | "code" | "multimodal"' default="text">
+  The query modality for multimodal engines.
+</ParamField>
+
+## Pipeline params
+
+<ParamField path="candidateK" type="integer">
+  Recall-stage candidate count before rerank (default server-chosen, e.g.
+  `max(k, 100)`).
+</ParamField>
+<ParamField path="fusion" type="object">
+  `{ method: "rrf" | "weighted", weights?, rrfK? }` — how to combine dense and
+  sparse lists in `hybrid` mode.
+</ParamField>
+<ParamField path="rerank" type="object | false">
+  `{ method, model?, topN? }` to rerank inside the call, or `false` to skip.
+  Needs `retrieve.rerankBuiltin`.
+</ParamField>
+<ParamField path="mmr" type="object">
+  `{ lambda: 0.5 }` — MMR diversification. `lambda` 0 = max diversity, 1 = pure
+  relevance.
+</ParamField>
+<ParamField path="rewrite" type='"rewrite" | "hyde" | "multi-query" | "decompose" | false'>
+  Apply a query transform before recall (needs `transform`).
+</ParamField>
+
+## Assembly params
+
+<ParamField path="filter" type="object">
+  A metadata [filter tree](/features/metadata-filtering). Fields are validated
+  against `filter.fields`.
+</ParamField>
+<ParamField path="minScore" type="float">
+  Drop hits below this score.
+</ParamField>
+<ParamField path="recency" type="object">
+  `{ field, halfLifeDays }` — exponential recency weighting.
+</ParamField>
+<ParamField path="includeText" type="boolean" default="true">
+  Include the hit body text.
+</ParamField>
+<ParamField path="includeVectors" type="boolean" default="false">
+  Include each hit's stored vector.
+</ParamField>
+<ParamField path="seed" type="integer">
+  Determinism hint — fixes stochastic steps. See below.
+</ParamField>
+<ParamField path="indexVersion" type="string">
+  Pin retrieval to a corpus snapshot. See below.
+</ParamField>
+<ParamField path="strict" type="boolean" default="true">
+  If `true`, an unsupported option is `-32005`; if `false`, the server **MAY**
+  degrade and note it in `usage.notes`.
+</ParamField>
+<ParamField path="cursor" type="string">
+  Opaque [pagination](/features/pagination) cursor (needs `pagination`).
+</ParamField>
+
+## Result
+
+<ResponseField name="hits" type="Hit[]">
+  The ranked results — see the Hit shape below.
+</ResponseField>
+<ResponseField name="nextCursor" type="string">
+  Opaque cursor for the next page, if any.
+</ResponseField>
+<ResponseField name="indexVersion" type="string">
+  The corpus snapshot actually served.
+</ResponseField>
+<ResponseField name="usage" type="object">
+  `{ candidates, reranked, latencyMs, notes? }` per-request telemetry.
+</ResponseField>
+<ResponseField name="rewrittenQuery" type="string">
+  The query after a server-side `rewrite`, if applied.
+</ResponseField>
+
+## The Hit shape
+
+```json
+{
+  "id": "arxiv:1706.03762#3",
+  "score": 0.94,
+  "text": "Attention is all you need …",
+  "content": [{ "type": "image", "mimeType": "image/png", "uri": "…/page-3.png" }],
+  "modality": "text",
+  "meta": { "year": 2017 },
+  "vector": [0.01, -0.03],
+  "scores": { "dense": 0.7, "sparse": 0.3, "rerank": 0.94 },
+  "citation": { "source": "…", "uri": "…", "title": "…", "page": 3 },
+  "trust": { "level": "trusted", "score": 0.98 },
+  "chunk": { "docId": "arxiv:1706.03762", "index": 3, "context": "…" }
+}
+```
+
+- **`id`** is in the server's identifier space; cross-engine fusion keys on the
+  stringified `id`.
+- **`scores`** exposes the per-stage contribution (dense/sparse/rerank) for
+  debugging and telemetry.
+- **`trust`** carries [provenance](/operating/security) so a downstream LLM can
+  weight or quarantine untrusted content before it enters a prompt.
+- **`content`/`modality`** carry non-text bodies for visual-document and
+  multimodal retrieval.
+
+## The funnel invariant
+
+The three size knobs form a funnel and **MUST** satisfy `candidateK ≥
+rerank.topN ≥ k`. The server clamps each to `retrieve.maxK` / `rerank.maxCandidates`,
+**SHOULD** report effective counts in `usage`, and **MUST NOT** return more than
+`k` hits.
+
+<Warning>
+If a client requests an unsupported `mode`/`method` and `strict` is `true` (the
+default), the server returns `-32005` (`OptionUnsupported`) rather than silently
+degrading. Set `strict: false` to allow graceful fallback.
+</Warning>
+
+## Determinism & reproducibility
+
+For evals, regression tests, and audits, two optional handles make a result
+repeatable:
+
+<AccordionGroup>
+  <Accordion title="seed — fix stochastic steps" icon="dice">
+    A client-supplied integer that fixes any stochastic step (ANN exploration,
+    MMR tie-breaking, LLM rerank sampling). A server that honours it **MUST**
+    return identical results for identical `(query, params, seed, indexVersion)`;
+    one that cannot **MUST** ignore it (never error) and **SHOULD** note
+    non-determinism in `usage.notes`. Advertised via `retrieve.deterministic`.
+  </Accordion>
+  <Accordion title="indexVersion — pin a corpus snapshot" icon="camera">
+    An opaque token identifying a corpus snapshot. A snapshot-capable server
+    echoes the served snapshot, and when a client pins one **MUST** either serve
+    it or fail with `-32010` if it was garbage-collected — never silently serve a
+    different one. Advertised via `retrieve.snapshots`.
+  </Accordion>
+</AccordionGroup>
+
+<Card title="Stream long retrievals" icon="wave-square" href="/features/streaming-progress">
+  Attach a `progressToken` to receive incremental progress and partial hits.
+</Card>

@@ -1,0 +1,89 @@
+---
+title: Indexing
+description: Mutate the corpus — add documents (with optional server-side chunking) and delete them by id or filter.
+icon: database
+---
+
+`index/add` and `index/delete` are gated by **`index`**. They let a client write
+to the corpus a server serves. A read-only engine simply omits the `index`
+capability. Servers advertise write support and optional server-side chunking via
+`index.writable` / `index.chunking`.
+
+## `index/add`
+
+Add or upsert documents. The server chunks, embeds, and indexes them according to
+its configuration.
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 1, "method": "index/add",
+  "params": {
+    "documents": [
+      { "id": "doc-42", "text": "Full document body …", "meta": { "lang": "en", "year": 2024 } }
+    ],
+    "chunking": { "strategy": "recursive", "maxTokens": 512 }
+  }
+}
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 1, "result": { "added": 1, "chunks": 7, "indexVersion": "v128" } }
+```
+</CodeGroup>
+
+<ParamField path="documents" type="object[]" required>
+  Each `{ id?, text | content, meta? }`. Omit `id` to let the server assign one.
+  `content` accepts [Content blocks](/concepts/message-format#content-blocks-modality)
+  for non-text bodies.
+</ParamField>
+<ParamField path="chunking" type="object">
+  Optional override of the server's chunking, if it advertises `index.chunking`.
+</ParamField>
+
+<ResponseField name="added" type="integer">
+  Documents accepted.
+</ResponseField>
+<ResponseField name="chunks" type="integer">
+  Chunks produced across those documents.
+</ResponseField>
+<ResponseField name="indexVersion" type="string">
+  The new corpus snapshot token — pass it to [`retrieve`](/methods/retrieve) to
+  pin reads to this state.
+</ResponseField>
+
+## `index/delete`
+
+Remove documents by id or by a metadata filter.
+
+<CodeGroup>
+```json By id
+{ "jsonrpc": "2.0", "id": 2, "method": "index/delete", "params": { "ids": ["doc-42"] } }
+```
+
+```json By filter
+{ "jsonrpc": "2.0", "id": 3, "method": "index/delete",
+  "params": { "filter": { "field": "year", "op": "lt", "value": 2015 } } }
+```
+</CodeGroup>
+
+<ParamField path="ids" type="(string | number)[]">
+  Document ids to delete.
+</ParamField>
+<ParamField path="filter" type="object">
+  A [filter tree](/features/metadata-filtering); every matching document is
+  removed.
+</ParamField>
+
+<ResponseField name="deleted" type="integer">
+  Documents removed.
+</ResponseField>
+<ResponseField name="indexVersion" type="string">
+  The resulting corpus snapshot token.
+</ResponseField>
+
+<Warning>
+Indexing is a privileged, mutating operation. A multi-tenant server **MUST**
+scope writes to the caller's authorised corpus and apply auth before dispatch —
+see [Security](/operating/security).
+</Warning>

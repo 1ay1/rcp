@@ -1,0 +1,111 @@
+---
+title: Capabilities
+description: Presence ⇒ supported. How a server declares exactly what it can do, and how clients gate calls before any I/O.
+icon: handshake
+---
+
+Capabilities are the heart of RCP. A server advertises exactly what it can do
+during [`initialize`](/concepts/initialization); clients gate every call on the
+matching capability and fail fast — *client-side* — before any I/O.
+
+## Presence ⇒ supported
+
+A capability object's **presence** means the method/feature is offered; its
+**value** carries metadata (which **MAY** be `{}`). **Absence means unavailable**,
+and clients **MUST NOT** use it.
+
+```json
+"capabilities": {
+  "retrieve": { "maxK": 200, "modes": ["dense", "sparse", "hybrid"] },
+  "rerank":   { "methods": ["cross-encoder", "colbert"] },
+  "embed":    { "dimension": 384, "identity": "bge-small-en" }
+}
+```
+
+Here the server supports `retrieve`, `rerank`, and `embed`. It does **not**
+support `graph`, `index`, or anything else — those keys are simply absent.
+
+## The capability set
+
+| Key | Value shape | Meaning |
+|-----|-------------|---------|
+| `embed` | `{ dimension, identity, batchLimit?, normalized?, modalities? }` | Dense content → vector. |
+| `sparseEmbed` | `{ identity, vocabulary? }` | Learned-sparse (SPLADE) term weights. |
+| `multiVector` | `{ dimension, identity, similarity?, modalities? }` | Multi-vector / late-interaction (ColBERT, ColPali). |
+| `rerank` | `{ methods, maxCandidates?, models? }` | Reranking; `methods` ⊆ `cross-encoder`, `colbert`, `llm`. |
+| `retrieve` | see below | Full query → hits retrieval. |
+| `transform` | `{ methods }` | Query transform; `rewrite`, `hyde`, `multi-query`, `decompose`, `step-back`. |
+| `graph` | `{ ops }` | Graph retrieval; `local`, `global`, `drift`, `communities`, `neighbors`. |
+| `index` | `{ writable, chunking?, contextual? }` | Document add/delete; optional server-side chunking. |
+| `filter` | `{ fields, operators? }` | Metadata filtering and the allowed fields/operators. |
+| `streaming` | `{}` | May emit `notifications/progress` and incremental hits. |
+| `pagination` | `{}` | List results support `cursor`/`nextCursor`. |
+| `citations` | `{}` | Hits carry `citation`/`trust` fields. |
+| `log` | `{ levels? }` | Emits `notifications/log`. |
+| `catalog` | `{ engines }` | Server is an **aggregator/gateway** that federates downstream engines. |
+
+<Note>
+A peer **MUST** treat an unknown capability key — or an unknown field inside a
+known capability — as informational and ignore it. Capability negotiation *is*
+the discovery mechanism; there is no runtime registry service.
+</Note>
+
+## The `retrieve` capability
+
+Because `retrieve` is the workhorse, its metadata is richer:
+
+```json
+{ "retrieve": {
+    "maxK": 200,
+    "modes": ["dense", "sparse", "hybrid"],
+    "fusion": ["rrf", "weighted"],
+    "mmr": true,
+    "rerankBuiltin": true,
+    "defaultMode": "hybrid"
+} }
+```
+
+<ResponseField name="modes" type="string[]">
+  The retrieval modes the server supports.
+</ResponseField>
+<ResponseField name="fusion" type="string[]">
+  Fusion strategies available when `mode: "hybrid"`.
+</ResponseField>
+<ResponseField name="mmr" type="boolean">
+  Whether MMR diversification can be requested inline.
+</ResponseField>
+<ResponseField name="rerankBuiltin" type="boolean">
+  Whether the server can rerank inside `retrieve` (vs a separate `rerank` call).
+</ResponseField>
+
+## Gating in practice
+
+Every SDK exposes a `supports(...)` check. A gated call to an unadvertised
+capability raises `CapabilityMissing` (`-32003`) **before any round-trip**:
+
+<CodeGroup>
+```python Python
+if c.supports(rcp.Capability.Rerank):
+    scores = c.rerank(query, passages)
+# else: calling c.rerank(...) raises RuntimeError("[RCP -32003] …")
+```
+
+```js Node.js
+if (c.supports(rcp.Capability.Rerank)) {
+  const scores = await c.rerank(query, passages);
+} // else: awaiting c.rerank(...) throws RcpError, code -32003
+```
+</CodeGroup>
+
+## Growing without breaking
+
+RCP grows additively. Names are partitioned into three spaces:
+
+- **Core** — the names in this spec. Reserved; only a future revision adds to it.
+- **Vendor extensions** — anyone **MAY** add `x-<vendor>` capability keys and
+  `x-<vendor>/<name>` methods without coordination. Peers ignore `x-` names they
+  don't understand; extension methods are still gated on a matching `x-<vendor>`
+  capability.
+- **`_meta`** — free-form side-band data that never affects core semantics.
+
+See [Extensibility](/concepts/extensibility) for the full policy.

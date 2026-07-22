@@ -1,0 +1,98 @@
+---
+title: Transports
+description: The same JSON-RPC message, framed two ways — newline-delimited stdio or HTTP, with optional SSE streaming.
+icon: shuffle
+---
+
+A message is **byte-identical across transports**; only framing differs. RCP/1
+defines two: stdio (the recommended default) and HTTP.
+
+<CardGroup cols={2}>
+  <Card title="stdio" icon="terminal">
+    The client launches the server as a subprocess and speaks newline-delimited
+    JSON over stdin/stdout. Zero network setup.
+  </Card>
+  <Card title="HTTP" icon="globe">
+    `POST <base>/<method>` with a JSON body. Optional Server-Sent Events for
+    streaming.
+  </Card>
+</CardGroup>
+
+## stdio (recommended default)
+
+The client launches the server as a subprocess and speaks JSON-RPC over the
+child's **stdin** (client → server) and **stdout** (server → client).
+
+- **Framing is newline-delimited JSON (NDJSON):** each message is exactly one
+  JSON object serialised with no embedded newline and terminated by a single
+  `\n`. Because JSON escaping renders any literal newline as `\n`, a compact
+  `dump` is always single-line — no length-prefix framing is needed.
+- A reader **MUST** tolerate blank lines between messages and **MUST NOT** assume
+  one message per `read()` — buffer until `\n`.
+
+<Warning>
+**stdout is protocol-only.** A server **MUST NOT** write anything but framed
+JSON-RPC to stdout. `stderr` is for human-readable diagnostics; structured logs
+travel over [`notifications/log`](/features/observability), never stdout.
+</Warning>
+
+<Note>
+EOF on stdin is an implicit `shutdown`: the server **SHOULD** finish in-flight
+requests, flush their responses, and exit.
+</Note>
+
+## HTTP
+
+Each request is `POST <base>/<method>` (default base `/rcp`) with the JSON-RPC
+object as the body and `Content-Type: application/json`. The method in the URL
+path **MUST** match the `method` in the body; on mismatch the server returns
+`-32600`.
+
+### HTTP status mapping
+
+The transport status is **distinct** from the JSON-RPC error. A well-formed
+JSON-RPC response — *including one carrying a JSON-RPC `error`* — **MUST** be
+returned with HTTP `200`. Non-`200` codes are reserved for transport-level
+failures the JSON-RPC layer never saw:
+
+| HTTP | When |
+|------|------|
+| `200` | Any well-formed JSON-RPC response (success **or** JSON-RPC error). |
+| `400` | Body is not valid JSON / not a JSON-RPC request. |
+| `401` / `403` | Deployment auth rejected the caller. |
+| `404` | Unknown base path (not an RCP endpoint). |
+| `429` | Transport-level rate limiting; **SHOULD** carry `Retry-After`. Mirrors `-32011`. |
+| `500` / `503` | Failure that prevented producing a JSON-RPC response. Mirrors `-32603`/`-32010`. |
+
+<Tip>
+Clients **SHOULD** prefer the JSON-RPC `error.code` when a `200` body is present,
+and treat non-`200` codes as transport faults.
+</Tip>
+
+### Streaming (SSE)
+
+When the client sends `Accept: text/event-stream` and the server advertised
+`streaming`, the server **MAY** respond with `Content-Type: text/event-stream`
+and emit zero or more `notifications/progress` frames followed by exactly one
+final frame carrying the JSON-RPC response. Each frame is one SSE `data:` line
+with a compact JSON payload, terminated by a blank line. If the client did not
+request SSE, the server **MUST** return a single buffered JSON response.
+
+### Sessions & auth
+
+HTTP is request-scoped, so `initialize` state does not persist across
+connections by default.
+
+- A **stateless** server **MAY** treat every request as implicitly initialized at
+  its advertised capabilities (still rejecting unadvertised methods with
+  `-32003`).
+- A **stateful** server **MAY** issue a session token in
+  `initialize.result._meta.session` and require it on later requests.
+- **RCP carries no auth of its own.** Deployments **MAY** require standard
+  mechanisms (`Authorization: Bearer …`, mTLS, API keys); these are opaque to
+  the protocol and applied before dispatch — including before `initialize`.
+
+## Compatibility envelope
+
+A server **MAY** also accept the compact `{ "method", "params" }` envelope, but
+clients **MUST** send full JSON-RPC 2.0.

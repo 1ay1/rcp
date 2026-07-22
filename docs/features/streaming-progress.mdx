@@ -1,0 +1,79 @@
+---
+title: Streaming & Progress
+description: Stream incremental progress — and partial hits — during a long retrieve, rerank, or graph call, without changing the final result.
+icon: wave-square
+---
+
+Long calls needn't be opaque. When the client attaches a `progressToken` and the
+server advertised **`streaming`**, the server **MAY** emit
+`notifications/progress` frames before the final response — reporting pipeline
+stages and even partial hits.
+
+## Opting in
+
+The client sets `_meta.progressToken` on the request. The token is a
+client-chosen **string or integer**, unique among the client's in-flight
+requests.
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 2, "method": "retrieve",
+  "params": { "query": "…", "k": 5, "_meta": { "progressToken": "t2" } }
+}
+```
+</CodeGroup>
+
+## Progress frames
+
+Each frame is a notification (no `id`, never answered):
+
+```json
+{ "jsonrpc": "2.0", "method": "notifications/progress",
+  "params": { "progressToken": "t2", "progress": 0.6, "stage": "rerank",
+              "message": "reranked 30/50", "partial": { "hits": [] } } }
+```
+
+<ResponseField name="progressToken" type="string | integer">
+  Echoes the request's token verbatim. A server **MUST NOT** emit progress for a
+  request that carried none.
+</ResponseField>
+<ResponseField name="progress" type="float">
+  Completion in `0.0–1.0`.
+</ResponseField>
+<ResponseField name="stage" type="string">
+  The current pipeline stage (`transform`, `recall`, `rerank`, `mmr`, …).
+</ResponseField>
+<ResponseField name="partial" type="object">
+  Optional incremental payload — e.g. `partial.hits` with first-stage candidates
+  before rerank.
+</ResponseField>
+
+## The final response is authoritative
+
+<Steps>
+  <Step title="Frames are advisory">
+    A client **MUST** function correctly even if it never receives a single
+    progress frame. Never build correctness on them.
+  </Step>
+  <Step title="Ignore unknown tokens">
+    A client **MUST** ignore a frame bearing a token it doesn't recognise.
+  </Step>
+  <Step title="The result still arrives">
+    The normal JSON-RPC response bearing the request `id` still follows every
+    stream and is the single source of truth.
+  </Step>
+</Steps>
+
+## Over HTTP: SSE
+
+Over stdio, progress frames simply interleave on stdout. Over HTTP, a client that
+sends `Accept: text/event-stream` receives them as Server-Sent Events — zero or
+more `notifications/progress` frames, then one final frame carrying the JSON-RPC
+response. See [Transports](/concepts/transports#streaming-sse).
+
+<Tip>
+Progress pairs naturally with cancellation: stream partial hits, let the user act
+on them, and send [`notifications/cancel`](/concepts/lifecycle#cancellation) if
+they navigate away.
+</Tip>

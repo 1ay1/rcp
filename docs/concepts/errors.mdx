@@ -1,0 +1,81 @@
+---
+title: Errors
+description: The RCP error-code block, structured error.data, and the recommended client retry policy.
+icon: triangle-exclamation
+---
+
+Every failure is a JSON-RPC error object: `{ "code": int, "message": string,
+"data"?: any }`. Codes in the `-32000..-32099` block are RCP-specific; the rest
+are standard JSON-RPC.
+
+```json
+{ "jsonrpc": "2.0", "id": 1, "error": { "code": -32003, "message": "capability 'rerank' not supported" } }
+```
+
+## Error codes
+
+| Code | Symbol | Meaning |
+|------|--------|---------|
+| `-32700` | `ParseError` | Invalid JSON. |
+| `-32600` | `InvalidRequest` | Not a valid Request object. |
+| `-32601` | `MethodNotFound` | Reserved; RCP prefers `-32004`. |
+| `-32602` | `InvalidParams` | Missing/malformed params or filter field. |
+| `-32603` | `InternalError` | Server-side failure. |
+| `-32001` | `NotInitialized` | Called before `initialize`. |
+| `-32002` | `VersionMismatch` | No common protocol version. |
+| `-32003` | `CapabilityMissing` | Method exists but the server didn't advertise it. |
+| `-32004` | `UnknownMethod` | Method not defined by RCP. |
+| `-32005` | `OptionUnsupported` | A requested option (mode/method) is not advertised. |
+| `-32006` | `Cancelled` | Request was cancelled via `notifications/cancel`. |
+| `-32010` | `BackendUnavailable` | Model offline, index not built, upstream down. |
+| `-32011` | `RateLimited` | Server is shedding load; client should back off. |
+
+<Note>
+The range `-32000..-32099` is reserved for RCP. Implementations **MUST NOT**
+invent codes outside it; put extra machine-readable detail in `error.data`.
+</Note>
+
+## Structured `error.data`
+
+The optional `data` object carries machine-readable detail so a client can react
+without string-parsing `message`:
+
+<ParamField path="retryable" type="boolean">
+  Whether retrying may succeed. Overrides the code-based default.
+</ParamField>
+<ParamField path="retryAfterMs" type="integer">
+  Server-suggested backoff before retrying (pairs with `RateLimited`).
+</ParamField>
+<ParamField path="field" type="string">
+  The offending parameter or filter field name (pairs with `InvalidParams`).
+</ParamField>
+<ParamField path="option" type="string">
+  The unsupported option value (pairs with `OptionUnsupported`).
+</ParamField>
+
+```json
+{ "code": -32011, "message": "rate limited",
+  "data": { "retryable": true, "retryAfterMs": 2000 } }
+```
+
+## Recommended retry policy
+
+`RateLimited` and `BackendUnavailable` are transient by default; the rest are
+not (unless `data.retryable` says otherwise).
+
+| Error | Retry? | Client action |
+|-------|--------|---------------|
+| `-32011` `RateLimited` | yes, backoff | Honour `retryAfterMs`, then retry with jitter. |
+| `-32010` `BackendUnavailable` | yes, later | Fail over (Selector) or drop the engine (Federation). |
+| `-32603` `InternalError` | maybe | Retry once; if it recurs, treat as fatal. |
+| `-32001` `NotInitialized` | yes, after fixing | Send `initialize`, then retry. |
+| `-32002` `VersionMismatch` | no | Abort; no common version. |
+| `-32003` / `-32004` / `-32005` | no | Programming/capability error; do not retry. |
+| `-32602` `InvalidParams` | no | Fix the request. |
+| `-32006` `Cancelled` | n/a | Expected after a cancel; do not retry automatically. |
+
+<Tip>
+Every SDK surfaces errors as a typed `RcpError` (or `RuntimeError`) whose message
+is `"[RCP <code>] <message>"` and which exposes `.code`, `.data`, `retryable()`,
+and `retryAfterMs()`.
+</Tip>

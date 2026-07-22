@@ -1,0 +1,66 @@
+---
+title: Batching
+description: Send several requests in one JSON-RPC array — with precise rules for notifications, empty batches, and malformed members.
+icon: layer-group
+---
+
+Clients **MAY** send a JSON **array** of request objects (a JSON-RPC 2.0 batch).
+The server replies with an array containing exactly **one response per request**,
+in any order — so clients correlate by `id`.
+
+<CodeGroup>
+```json Request (batch)
+[
+  { "jsonrpc": "2.0", "id": 1, "method": "ping", "params": { "nonce": 1 } },
+  { "jsonrpc": "2.0", "method": "notifications/cancel", "params": { "id": 9 } },
+  { "jsonrpc": "2.0", "id": 2, "method": "info", "params": {} }
+]
+```
+
+```json Response (array of 2)
+[
+  { "jsonrpc": "2.0", "id": 1, "result": { "nonce": 1 } },
+  { "jsonrpc": "2.0", "id": 2, "result": { "protocolVersion": 1, "server": {}, "capabilities": {} } }
+]
+```
+</CodeGroup>
+
+Notice the middle member — a notification — produces **no** response entry, so a
+three-member batch yields a two-member array.
+
+## The rules
+
+| Situation | Server behaviour |
+|-----------|------------------|
+| Normal batch | One response object per **request** member, any order. |
+| Notification members (no `id`) | Processed, but contribute **no** response entry. |
+| **Only** notifications | Processed; server returns **nothing** (no HTTP body / no stdio line). |
+| **Empty** array `[]` | Invalid — a single (non-array) `-32600` error with `id: null`. |
+| A malformed member | A `-32600` entry with `id: null`; well-formed members still run. |
+
+<Note>
+One member's error never fails the others. Batching composes with capability
+gating and cancellation exactly as singleton requests do. Servers **MAY** cap
+batch size and reject an oversized batch with `-32602`.
+</Note>
+
+## Prefer array params for throughput
+
+`embed`, `embed/sparse`, `embed/multi`, and `rerank` are **inherently batched**
+through their array parameters (`inputs`, `passages`). For high-throughput
+embedding or reranking, prefer those over wrapping many singleton calls in a
+JSON-RPC batch — they avoid per-request envelope overhead and let the server
+vectorise the whole set.
+
+<CodeGroup>
+```json Prefer this
+{ "method": "embed", "params": { "inputs": ["a", "b", "c", "d"] } }
+```
+
+```json Over this
+[
+  { "id": 1, "method": "embed", "params": { "inputs": ["a"] } },
+  { "id": 2, "method": "embed", "params": { "inputs": ["b"] } }
+]
+```
+</CodeGroup>

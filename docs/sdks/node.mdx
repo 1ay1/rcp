@@ -1,0 +1,99 @@
+---
+title: Node.js SDK
+description: A native Node.js SDK — zero dependencies, ESM, async. Every call returns a Promise.
+icon: node-js
+---
+
+The Node.js SDK (`rcp-protocol`) is written entirely against the standard library
+(`child_process`, `http`, `readline`) — **no native addon, nothing to build**. It
+is ESM and async (every call returns a Promise) and interoperates byte-for-byte
+with the C++ and Python SDKs.
+
+## Install
+
+```sh
+npm install rcp-protocol
+```
+
+Node ≥ 18. The package is ESM (`"type": "module"`).
+
+## Server
+
+Handlers may be sync **or** async.
+
+```js
+import * as rcp from "rcp-protocol";
+
+const s = new rcp.Server();
+s.setInfo("my-engine", "1.0");
+s.advertise(rcp.Capability.Retrieve, { maxK: 200, modes: ["dense", "hybrid"] });
+s.advertise(rcp.Capability.Embed, { dimension: 384, identity: "bge-small-en" });
+
+s.on(rcp.Method.RETRIEVE, async (params) => {
+  const hits = await myIndex.search(params.query, params.k ?? 10);
+  return { hits: hits.map((h) => ({ id: h.id, score: h.score, text: h.text })) };
+});
+
+s.on(rcp.Method.EMBED, (params) => {
+  const items = params.inputs || params.texts || [];   // inputs preferred
+  return { vectors: items.map(embedOne) };
+});
+
+await s.serveStdio();          // or: await s.serveHttp(8000)
+```
+
+## Client
+
+```js
+import * as rcp from "rcp-protocol";
+
+const c = await rcp.connectStdio(["node", "my_engine.js"]);
+// or: const c = await rcp.connectHttp("http://127.0.0.1:8000/rcp");
+
+console.log(c.server, "RCP/" + c.protocolVersion);
+
+if (c.supports(rcp.Capability.Retrieve))
+  for (const h of await c.retrieve("eiffel tower", 3))
+    console.log(h.id, h.score, h.text);
+
+if (c.supports(rcp.Capability.Embed)) {
+  const [vec] = await c.embed(["hello world"]);
+  console.log("dim", vec.length);
+}
+
+await c.shutdown();
+```
+
+A gated call to an unadvertised capability throws before any I/O:
+
+```js
+try {
+  await c.rerank("q", ["a", "b"]);
+} catch (e) {
+  // e instanceof rcp.RcpError, e.code === -32003
+  // e.message === "[RCP -32003] server does not advertise 'rerank'"
+}
+```
+
+Client methods: `embed`, `embedSparse`, `embedMulti`, `rerank`, `retrieve`,
+`search` (returns `{ hits, usage, nextCursor }`), `graph`, `transform`,
+`indexAdd`, `indexDelete`, `catalog`, `info`, `ping`, `call`, `shutdown`.
+
+## Selecting a backend
+
+```js
+const sel = rcp.Selector.load("rcp.json");
+const c = await sel.selectCapable(rcp.Capability.Retrieve);
+```
+
+## Test
+
+```sh
+cd sdk/node
+node test.js     # zero dependencies — nothing to build
+```
+
+<Info>
+The suite includes a case where the Node client drives the **C++** example
+server, proving cross-language interop.
+</Info>

@@ -1,0 +1,59 @@
+---
+title: Relationship to MCP & ACP
+description: How RCP reuses the JSON-RPC conventions of MCP and ACP — and why retrieval deserves its own protocol rather than riding on MCP tools.
+icon: diagram-project
+---
+
+RCP is a deliberate **sibling** of MCP and ACP, not a competitor. It reuses their
+proven JSON-RPC conventions so an implementer of one is instantly productive in
+another.
+
+## What RCP shares
+
+<CardGroup cols={2}>
+  <Card title="JSON-RPC 2.0 framing" icon="code">
+    Requests with `id`, notifications without.
+  </Card>
+  <Card title="initialize + capabilities" icon="handshake">
+    A server advertises exactly what it supports; clients gate calls on
+    capabilities.
+  </Card>
+  <Card title="_meta extensibility" icon="tag">
+    Additive fields ride in `_meta` without breaking the wire.
+  </Card>
+  <Card title="Cursor pagination" icon="arrow-right-long">
+    The same opaque-cursor model, plus Markdown-first human text and reused MCP
+    JSON representations where sensible.
+  </Card>
+</CardGroup>
+
+## Why retrieval needs its own protocol
+
+Retrieval is not just "another tool call." It has a rich, well-studied shape that
+a generic tool interface cannot express faithfully:
+
+<AccordionGroup>
+  <Accordion title="A pipeline, not a function" icon="diagram-project">
+    Transform → recall → rerank → diversify → cite, with each stage independently
+    negotiable. A single `tool.call` cannot expose `candidateK ≥ topN ≥ k`, MMR
+    `lambda`, fusion strategy, or per-stage `scores`.
+  </Accordion>
+  <Accordion title="Ranking semantics are first-class" icon="ranking-star">
+    Scores, ranks, and fusion (RRF) are core, because federating heterogeneous
+    engines is the norm — not an afterthought bolted onto a string result.
+  </Accordion>
+  <Accordion title="A distinct threat model" icon="shield-halved">
+    Retrieved content is *untrusted data moving toward an LLM's context*,
+    dominated by indirect prompt injection and provenance concerns that ordinary
+    RPC never faces. RCP carries `trust`/`citation` for exactly this. See
+    [Security](/operating/security).
+  </Accordion>
+</AccordionGroup>
+
+Modelling retrieval as a plain MCP tool would erase all of this. RCP gives the
+retrieval layer the same first-class, vendor-neutral contract that MCP gave tools
+and ACP gave agents.
+
+<Card title="See the whole stack" icon="layer-group" href="/ecosystem/stack">
+  Where RCP, MCP, and ACP sit in a modern agent architecture.
+</Card>

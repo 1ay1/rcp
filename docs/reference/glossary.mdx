@@ -1,0 +1,27 @@
+---
+title: Glossary
+description: The retrieval vocabulary RCP models — bi-encoders, late interaction, RRF, MMR, GraphRAG, and more.
+icon: book-a
+---
+
+RCP is designed backwards from the state of the art in retrieval. These are the
+terms that recur across the docs.
+
+| Term | Meaning |
+|------|---------|
+| **Bi-encoder** | Encodes query and document independently into one vector each; fast, approximate (dense retrieval). |
+| **Cross-encoder** | Jointly encodes a (query, document) pair for one relevance score; accurate, used for reranking. |
+| **Late interaction** | Multi-vector scoring (MaxSim) that approximates cross-encoder accuracy at bi-encoder speed (ColBERT, ColPali). |
+| **Learned-sparse** | A sparse term→weight vector produced by a model (SPLADE), searchable with an inverted index. |
+| **Dense / sparse / hybrid** | Retrieval over dense vectors / lexical or learned-sparse terms / a fusion of both. |
+| **RRF** | Reciprocal Rank Fusion — rank-only list merging robust to incomparable scores. See [Federation](/features/federation). |
+| **MMR** | Maximal Marginal Relevance — re-ranks for the relevance–diversity trade-off. |
+| **HyDE** | Hypothetical Document Embeddings — embed an LLM-generated pseudo-answer as the query. See [Query Transform](/methods/query-transform). |
+| **GraphRAG** | Retrieval over a knowledge graph / community summaries (local, global, drift). See [Graph](/methods/graph). |
+| **Contextual retrieval** | Prepending chunk-situating context before embedding/indexing (Anthropic). |
+| **Recall stage / rerank stage** | Cheap high-recall candidate generation, then expensive precise reranking. See [the pipeline](/concepts/pipeline). |
+| **MaxSim** | The late-interaction scoring function: sum over query vectors of the max similarity to any document vector. |
+| **Aggregator** | A server that federates downstream engines and advertises [`catalog`](/methods/catalog). |
+| **Modality** | Coarse content kind: text, image, audio, code, multimodal. See [Content blocks](/concepts/message-format#content-blocks-modality). |
+| **Capability** | A feature a server advertises at `initialize`; presence ⇒ supported. See [Capabilities](/concepts/capabilities). |
+| **Selector / Federation** | Client-side routing: pick one live backend, or fan out to all and fuse. |

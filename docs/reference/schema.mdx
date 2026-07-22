@@ -1,0 +1,47 @@
+---
+title: JSON Schema
+description: The normative JSON Schema (draft 2020-12) for every RCP/1 message shape.
+icon: brackets-curly
+---
+
+Every RCP/1 message shape — requests, results, errors, capabilities, hits,
+filters, Content blocks — is described by a normative
+[JSON Schema (draft 2020-12)](https://json-schema.org/) at
+[`/schema/rcp-1.0.json`](https://github.com/1ay1/rcp/blob/main/schema/rcp-1.0.json).
+
+<Card title="Download the schema" icon="download" href="https://raw.githubusercontent.com/1ay1/rcp/main/schema/rcp-1.0.json">
+  `schema/rcp-1.0.json` — validate messages, generate types, or drive a linter.
+</Card>
+
+## Using it
+
+<CardGroup cols={2}>
+  <Card title="Validate messages" icon="circle-check">
+    Point any draft-2020-12 validator (ajv, `jsonschema`, `jschema`) at a message
+    to check conformance in tests and CI.
+  </Card>
+  <Card title="Generate types" icon="wand-magic-sparkles">
+    Feed it to `quicktype`, `datamodel-code-generator`, or
+    `json-schema-to-typescript` to derive types in your language.
+  </Card>
+</CardGroup>
+
+```sh
+# Validate a captured message with ajv
+npx ajv-cli validate -s schema/rcp-1.0.json -d captured-message.json
+
+# Generate TypeScript types
+npx json-schema-to-typescript schema/rcp-1.0.json > rcp.d.ts
+```
+
+<Note>
+The schema is a companion to the prose specification, not a replacement: where
+the schema constrains **shape**, the [specification](/reference/specification)
+constrains **behaviour** (gating, negotiation, error semantics). A message can be
+schema-valid and still violate a MUST — conformance requires both.
+</Note>
+
+<Info>
+The reference [SDKs](/sdks/overview) already encode these shapes, so if you build
+on an SDK you get schema-correct messages for free.
+</Info>

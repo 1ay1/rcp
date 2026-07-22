@@ -1,0 +1,59 @@
+---
+title: Versioning
+description: How RCP versions the wire — a single integer, additive growth within a major, and lifetime-stable negotiation.
+icon: code-branch
+---
+
+RCP versions the **wire**, not the implementation. The policy is deliberately
+boring so integrations stay stable.
+
+## The rules
+
+<Steps>
+  <Step title="Major version = breaking wire change">
+    The major version (`RCP/N`) increments **only** on a breaking wire change.
+    RCP/1 is the current, stable major.
+  </Step>
+  <Step title="Additive changes stay within a major">
+    New optional methods, capability keys, fields, and `_meta` are added **within**
+    a major version and discovered via [capabilities](/concepts/capabilities) —
+    never a version bump.
+  </Step>
+  <Step title="Negotiation is lifetime-stable">
+    The version negotiated at [`initialize`](/concepts/initialization) governs a
+    session for its **whole lifetime**. A peer supports the contiguous range
+    `[1 .. protocolVersion]`; the negotiated version is `min(client, server)`.
+  </Step>
+</Steps>
+
+## Why a single integer
+
+The `protocolVersion` is one integer, not a semver string — the same choice MCP
+and ACP make. It identifies a *set of guarantees*, and finer-grained feature
+detection is what [capabilities](/concepts/capabilities) are for. This keeps
+negotiation trivial: take the min, done.
+
+<Note>
+Because RCP/1 is the floor, a server returns `-32002` (`VersionMismatch`) **only**
+if it supports no version `≥ 1`. In practice the negotiated version is always
+`≥ 1`.
+</Note>
+
+## What this means for you
+
+<CardGroup cols={2}>
+  <Card title="Server authors" icon="server">
+    Add features by advertising new capabilities. Never break an existing
+    request/response shape within RCP/1 — add, don't change.
+  </Card>
+  <Card title="Client authors" icon="laptop">
+    Gate on `supports(...)`, not on the version string. A newer server is safe to
+    talk to; you simply won't use capabilities you don't recognise.
+  </Card>
+</CardGroup>
+
+<Info>
+Experimental surface that shouldn't wait for a spec revision goes through the
+`x-<vendor>` [extension](/concepts/extensibility) space — no version bump, no
+central coordination.
+</Info>

@@ -6,7 +6,7 @@
 
 The retrieval companion to [MCP](https://modelcontextprotocol.io) (tools) and [ACP](https://agentclientprotocol.com) (agents).
 
-[**Specification**](spec/rcp-1.0.md) · [**JSON Schema**](schema/rcp-1.0.json) · [**Website**](https://1ay1.github.io/rcp/) · [**C++ SDK**](sdk/cpp) · [**Python SDK**](sdk/python)
+[**Specification**](spec/rcp-1.0.md) · [**JSON Schema**](schema/rcp-1.0.json) · [**Docs**](docs) · [**C++ SDK**](sdk/cpp) · [**Python SDK**](sdk/python) · [**Node SDK**](sdk/node)
 
 `RCP/1` · JSON-RPC 2.0 · MIT
 
@@ -218,9 +218,9 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 - `sdk/node/` — the native Node.js `rcp-protocol` package (standard library only).
 - `conformance/` — transport-agnostic conformance suite.
 - `examples/` — runnable Python client/server.
-- `site/` — the documentation website (Astro + Starlight), auto-deployed to
-  GitHub Pages. The spec and schema stay the source of truth; the site syncs
-  them at build time.
+- `docs/` — the documentation website ([Mintlify](https://mintlify.com)); each
+  protocol concept is its own readable page. The spec and schema stay the source
+  of truth; the site links them and syncs the schema.
 - `rcp.json` — sample engine registry.
 
 ## License

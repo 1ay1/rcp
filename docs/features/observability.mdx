@@ -1,0 +1,75 @@
+---
+title: Observability
+description: Two optional, non-intrusive channels — structured log notifications and per-request usage telemetry — that never alter retrieval semantics.
+icon: chart-line
+---
+
+Production retrieval must be debuggable and measurable. RCP exposes two optional
+channels; both are advisory and **never** alter retrieval semantics.
+
+## Log notifications
+
+A server that advertises **`log`** **MAY** emit `notifications/log` at any time —
+no `id`, no response:
+
+```json
+{ "jsonrpc": "2.0", "method": "notifications/log",
+  "params": { "level": "info", "message": "reranked 100→30",
+              "logger": "pipeline", "data": { "latencyMs": 42 },
+              "_meta": { "progressToken": "t2" } } }
+```
+
+<ResponseField name="level" type="string">
+  Syslog-style severity: `debug`, `info`, `notice`, `warning`, `error`.
+</ResponseField>
+<ResponseField name="message" type="string">
+  Human-readable text. **Never** parse it for control flow.
+</ResponseField>
+<ResponseField name="logger" type="string">
+  Optional component/source name.
+</ResponseField>
+<ResponseField name="data" type="object">
+  Optional structured payload — timings, counts, ids.
+</ResponseField>
+
+<Note>
+A client **MAY** advertise a minimum level via `initialize.params._meta.logLevel`;
+servers **SHOULD** honour it and emit logs only when the client advertised the
+`log` capability. A client **MUST** function correctly if it drops every log.
+</Note>
+
+<Warning>
+Over stdio, logs travel as `notifications/log` **on stdout** — *not* stderr — so
+a supervising client sees them in-band and correlated with requests. `stderr`
+remains for unstructured, human-only diagnostics.
+</Warning>
+
+## Usage telemetry
+
+Every `retrieve` / `rerank` / `graph` result **SHOULD** carry a `usage` object
+with per-request telemetry:
+
+```json
+{ "result": { "hits": [], "usage": { "candidates": 100, "reranked": 30, "latencyMs": 42, "notes": [] } } }
+```
+
+<ResponseField name="candidates" type="integer">
+  Candidates produced by the recall stage — attribute recall vs precision.
+</ResponseField>
+<ResponseField name="reranked" type="integer">
+  How many candidates the reranker actually rescored.
+</ResponseField>
+<ResponseField name="latencyMs" type="integer">
+  Server-side wall time for the request.
+</ResponseField>
+<ResponseField name="notes" type="string[]">
+  Free-form notes — e.g. a graceful `strict:false` degradation.
+</ResponseField>
+
+<Tip>
+Trace-correlation ids belong in `_meta` (e.g. `_meta.traceId`), **never** in a
+core field. Combine `usage.candidates`/`usage.reranked` with the funnel invariant
+to tune `candidateK`/`topN`/`k`, and pair it with fixed `seed` + pinned
+`indexVersion` for reproducible evals — see
+[Evaluation](/reference/specification).
+</Tip>

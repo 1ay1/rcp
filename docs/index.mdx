@@ -1,0 +1,73 @@
+---
+title: Retrieval Context Protocol
+description: One open protocol so any RAG engine — any language, any vendor — can share its power. The retrieval companion to MCP and ACP.
+---
+
+**RCP is one open, versioned JSON-RPC protocol** so any RAG engine — any language,
+any vendor — can expose `embed`, `rerank`, `retrieve`, `graph`, and `index`, and
+any client can consume it uniformly. It is the retrieval companion to MCP and ACP,
+small enough for a thin client to fully consume and expressive enough for a
+frontier engine to fully express.
+
+<CardGroup cols={3}>
+  <Card title="Get started" icon="rocket" href="/get-started/introduction">
+    What RCP is, the problem it solves, and a working engine in five minutes.
+  </Card>
+  <Card title="Read the protocol" icon="book-open" href="/concepts/message-format">
+    The wire format, capabilities, methods, and errors — one concept per page.
+  </Card>
+  <Card title="Pick an SDK" icon="code" href="/sdks/overview">
+    Native C++, Python, and Node.js SDKs that interoperate byte-for-byte.
+  </Card>
+</CardGroup>
+
+## Why RCP
+
+Every RAG stack reinvents the same wire: **embed, rerank, retrieve, filter, cite.**
+MCP standardised *tools*; ACP standardised *agents*; **nothing standardised the
+retrieval layer that grounds them.** RCP is that layer.
+
+<CardGroup cols={2}>
+  <Card title="Frontier-native" icon="bolt">
+    Hybrid dense + sparse search, ColBERT/ColPali late interaction (MaxSim),
+    rerankers, MMR diversification, GraphRAG, agentic multi-hop, citations, and
+    metadata filtering are all first-class — not bolted on.
+  </Card>
+  <Card title="Transport-free" icon="shuffle">
+    JSON-RPC 2.0 over newline-delimited stdio *or* HTTP. If it can read a line and
+    parse JSON, it can speak RCP.
+  </Card>
+  <Card title="Capability-negotiated" icon="handshake">
+    A server advertises exactly what it can do; clients gate calls on capabilities
+    and fail fast, client-side, before any I/O.
+  </Card>
+  <Card title="Composable" icon="puzzle-piece">
+    A registry (`rcp.json`) lets a client target one backend (**Selector**) or
+    fuse many (**Federation**) with Reciprocal Rank Fusion.
+  </Card>
+</CardGroup>
+
+## The missing third protocol
+
+An agent runtime speaks **ACP** to its client, calls tools over **MCP**, and
+fetches grounding context over **RCP**:
+
+```
+  client  ⇄  ACP  ⇄  agent  ⇄  MCP  ⇄  tools
+                       │
+                       └──────  RCP  ⇄  retrieval engine(s)
+```
+
+All three share JSON-RPC framing, an `initialize`/capabilities handshake, `_meta`
+extensibility, and cursor pagination — learn one, you know the shape of all three.
+
+<CardGroup cols={2}>
+  <Card title="The retrieval pipeline" icon="diagram-project" href="/concepts/pipeline">
+    Transform → recall → rerank → diversify → cite, each stage independently
+    negotiable behind a single `retrieve` call.
+  </Card>
+  <Card title="Conformance levels" icon="circle-check" href="/operating/conformance">
+    L0 Base, L1 Retrieval, L2 SOTA — with a transport-agnostic test suite that
+    validates any server in any language.
+  </Card>
+</CardGroup>

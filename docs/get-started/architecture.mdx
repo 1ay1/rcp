@@ -1,0 +1,91 @@
+---
+title: Architecture
+description: Roles, the retrieval pipeline model, and how RCP sits beside MCP and ACP.
+icon: sitemap
+---
+
+An agent runtime speaks **ACP** to its client, calls tools over **MCP**, and
+fetches grounding context over **RCP**. All three share JSON-RPC framing, an
+`initialize`/capabilities handshake, `_meta` extensibility, and cursor
+pagination — learn one, you know the shape of all three.
+
+```
+  client  ⇄  ACP  ⇄  agent  ⇄  MCP  ⇄  tools
+                       │
+                       └──────  RCP  ⇄  retrieval engine(s)
+```
+
+## Roles
+
+<CardGroup cols={2}>
+  <Card title="Client" icon="laptop">
+    An application, agent runtime, or IDE that needs retrieval context. It
+    **initiates** the connection and drives the handshake.
+  </Card>
+  <Card title="Server (engine)" icon="server">
+    A RAG engine, vector database, or aggregator that advertises capabilities
+    and answers method calls.
+  </Card>
+</CardGroup>
+
+The client always initiates. A server **MUST NOT** assume any capability was
+negotiated until `initialize` completes.
+
+## The retrieval pipeline model
+
+RCP models retrieval as a composable pipeline. A single `retrieve` call can
+transparently drive as many stages as the engine supports:
+
+<Steps>
+  <Step title="Query transform">
+    Expansion, HyDE, decomposition (`query/transform`).
+  </Step>
+  <Step title="Candidate generation">
+    Dense, sparse, or hybrid first-stage recall.
+  </Step>
+  <Step title="Rerank">
+    Cross-encoder or late-interaction (MaxSim) scoring.
+  </Step>
+  <Step title="Diversify">
+    MMR to reduce redundancy.
+  </Step>
+  <Step title="Assemble">
+    Apply metadata filters and recency, and attach citations.
+  </Step>
+</Steps>
+
+A thin client just calls `retrieve` and reads hits; a sophisticated client can
+also call the individual stages (`embed`, `rerank`, `query/transform`, `graph`)
+directly. See [The retrieval pipeline](/concepts/pipeline) for the full model.
+
+## Message shape
+
+Every message is JSON-RPC 2.0. Requests carry an `id`; notifications do not.
+Extensibility rides in `_meta`.
+
+```json
+{ "jsonrpc": "2.0", "id": 1, "method": "retrieve", "params": { "query": "…" } }
+```
+
+<Card title="Message format" icon="code" href="/concepts/message-format">
+  The normative framing, id rules, and `_meta` extensibility.
+</Card>
+
+## How the connection unfolds
+
+<Steps>
+  <Step title="Connect">
+    The client spawns the server (stdio) or opens an HTTP endpoint.
+  </Step>
+  <Step title="Initialize">
+    The client sends `initialize` with its protocol version; the server replies
+    with the negotiated version, its identity, and its **capabilities**.
+  </Step>
+  <Step title="Call">
+    The client calls capability-gated methods (`retrieve`, `embed`, …), reading
+    results and optionally streaming progress.
+  </Step>
+  <Step title="Shut down">
+    The client sends `shutdown` (or just closes the transport).
+  </Step>
+</Steps>

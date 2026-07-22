@@ -1,0 +1,41 @@
+name: Validate docs
+
+# Hosting is handled by the Mintlify GitHub App (auto-deploys docs/ on push to
+# main). This workflow only validates the Mintlify content — structure, links,
+# and MDX — on pushes and PRs that touch the docs, spec, or schema.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "spec/rcp-1.0.md"
+      - "schema/rcp-1.0.json"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "spec/rcp-1.0.md"
+      - "schema/rcp-1.0.json"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Sync schema into docs
+        run: node scripts/sync-schema.mjs
+        working-directory: docs
+      - name: Check navigation resolves
+        run: node scripts/check-nav.mjs
+        working-directory: docs
+      - name: Check internal links
+        run: node scripts/check-links.mjs
+        working-directory: docs
+      - name: Check MDX
+        run: node scripts/check-mdx.mjs
+        working-directory: docs

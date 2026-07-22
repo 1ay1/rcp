@@ -1,0 +1,82 @@
+---
+title: Extensibility
+description: How RCP grows additively without breaking the wire — vendor extensions, the _meta channel, and forward-compatibility rules.
+icon: puzzle-piece
+---
+
+RCP is designed to grow **additively**: a newer peer and an older peer always
+share a working subset. Three rules make this true.
+
+## 1. Unknown things are ignored, never rejected
+
+- **Unknown fields** in any object **MUST** be ignored by the receiver.
+- **Unknown capability keys** (and unknown fields inside a known capability) are
+  informational and ignored.
+- **Unknown `notifications/*`** methods are silently dropped — they have no `id`,
+  so there is nothing to answer.
+
+The one exception: `filter` **field names** are validated against the advertised
+set, because a silently-ignored filter would return wrong results.
+
+## 2. The three name spaces
+
+<CardGroup cols={3}>
+  <Card title="Core" icon="lock">
+    The method names, capability keys, enum values, and error codes in this
+    spec. Reserved — only a future RCP revision may add to core.
+  </Card>
+  <Card title="Vendor" icon="flask">
+    Anyone may add experimental surface with the `x-<vendor>` convention, no
+    coordination required.
+  </Card>
+  <Card title="_meta" icon="tag">
+    Free-form side-band data attached to any params/result, never affecting core
+    semantics.
+  </Card>
+</CardGroup>
+
+### Vendor extensions
+
+Any implementer **MAY** introduce proprietary surface without central
+coordination:
+
+- Extension **methods** are named `x-<vendor>/<name>` — e.g. `x-acme/rerank-v2`.
+- Extension **capability keys** and **fields** are named `x-<vendor>` or
+  `x-<vendor>-<name>`.
+
+A peer **MUST** ignore any `x-`-prefixed name it does not understand. Extension
+methods are still **gated**: a client **MUST NOT** call `x-acme/*` unless the
+server advertised a matching `x-acme` capability.
+
+```json
+"capabilities": {
+  "retrieve": { "maxK": 200 },
+  "x-acme": { "rerankV2": true }
+}
+```
+
+<Note>
+A name that proves broadly useful **SHOULD** be proposed for core registration in
+a later revision, at which point it drops its `x-` prefix. Capability
+negotiation *is* the discovery mechanism — there is no runtime registry service.
+</Note>
+
+## 3. The `_meta` channel
+
+Every `params` and `result` object **MAY** carry a `_meta` object for
+implementation-specific data that never changes core meaning:
+
+| Key | Used by | Purpose |
+|-----|---------|---------|
+| `progressToken` | client → request | Opt into `notifications/progress` for this call. |
+| `logLevel` | client → request | Request `notifications/log` at a level. |
+| `session` | server → `initialize.result` | A stateful-HTTP session token. |
+| *(anything)* | either | Timings, trace ids, cost — implementation-defined. |
+
+Keys are implementation-defined; unknown keys are ignored. This keeps the core
+namespace clean while giving implementations room to move.
+
+<Info>
+See [§4.4 and §6.2 of the specification](/reference/specification) for the
+normative extension and registration policy.
+</Info>

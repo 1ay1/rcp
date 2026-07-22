@@ -1,0 +1,92 @@
+---
+title: Python SDK
+description: A native Python SDK — pure standard library, no compiler, no dependencies, nothing to build.
+icon: python
+---
+
+The Python SDK is written entirely against the standard library — **no C
+extension, no pybind11, no compiled module**. It mirrors the C++ SDK's public
+surface and wire behaviour, so a Python client and a C++/Node server interoperate
+byte-for-byte.
+
+## Requirements
+
+Python ≥ 3.9. No third-party dependencies. Add `sdk/python` to your path (or
+install it) and `import rcp`.
+
+## Server
+
+```python
+import rcp
+
+s = rcp.Server()
+s.set_info("my-engine", "1.0")
+s.advertise(rcp.Capability.Retrieve, {"maxK": 200, "modes": ["dense", "hybrid"]})
+s.advertise(rcp.Capability.Embed, {"dimension": 384, "identity": "bge-small-en"})
+
+@s.on(rcp.Method.RETRIEVE)
+def _(params):
+    hits = my_index.search(params["query"], params.get("k", 10))
+    return {"hits": [{"id": h.id, "score": h.score, "text": h.text} for h in hits]}
+
+@s.on(rcp.Method.EMBED)
+def _(params):
+    items = params.get("inputs") or params.get("texts", [])   # inputs preferred
+    return {"vectors": [embed_one(t) for t in items]}
+
+s.serve_stdio()          # or s.serve_http(8000)
+```
+
+## Client
+
+```python
+import rcp
+
+c = rcp.connect_stdio(["python3", "my_engine.py"])
+# or: c = rcp.connect_http("http://127.0.0.1:8000/rcp")
+
+print(c.server, "RCP/" + str(c.protocol_version))
+
+if c.supports(rcp.Capability.Retrieve):
+    for h in c.retrieve("eiffel tower", k=3):
+        print(h["id"], h["score"], h["text"])
+
+if c.supports(rcp.Capability.Embed):
+    (vec,) = c.embed(["hello world"])
+    print("dim", len(vec))
+
+c.shutdown()
+```
+
+A gated call to an unadvertised capability raises before any I/O:
+
+```python
+try:
+    c.rerank("q", ["a", "b"])
+except RuntimeError as e:
+    # str(e) == "[RCP -32003] server does not advertise 'rerank'"
+    ...
+```
+
+Client methods: `embed`, `embed_sparse`, `embed_multi`, `rerank`, `retrieve`,
+`search` (returns `{hits, usage, next_cursor}`), `graph`, `transform`,
+`index_add`, `index_delete`, `catalog`, `info`, `ping`, `call`, `shutdown`.
+
+## Selecting a backend
+
+```python
+sel = rcp.Selector.load("rcp.json")
+c = sel.select_capable(rcp.Capability.Retrieve)   # highest-priority live engine
+```
+
+## Test
+
+```sh
+cd sdk/python
+python3 test_bindings.py     # pure stdlib — nothing to build
+```
+
+<Info>
+The suite includes a case where the Python client drives the **C++** example
+server, proving cross-language interop.
+</Info>

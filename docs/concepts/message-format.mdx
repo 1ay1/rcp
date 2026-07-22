@@ -1,0 +1,156 @@
+---
+title: Message Format
+description: The JSON-RPC 2.0 framing every RCP message shares — requests, responses, notifications, and the _meta extension channel.
+icon: code
+---
+
+Every RCP message is a [JSON-RPC 2.0](https://www.jsonrpc.org/specification)
+object. The `jsonrpc` member **MUST** be `"2.0"`. There are three shapes:
+**requests**, **responses**, and **notifications**.
+
+## Request
+
+A request invokes a method and expects exactly one response.
+
+<CodeGroup>
+```json Example
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "retrieve",
+  "params": { "query": "the eiffel tower", "k": 5, "_meta": {} }
+}
+```
+</CodeGroup>
+
+<ParamField path="jsonrpc" type="string" required>
+  Always `"2.0"`.
+</ParamField>
+<ParamField path="id" type="string | number" required>
+  Unique among a client's in-flight requests on the connection. A client **MAY**
+  reuse an `id` only after receiving the response bearing it. **MUST NOT** be
+  `null`. RCP uses no positional parameters.
+</ParamField>
+<ParamField path="method" type="string" required>
+  A method name — `<verb>` or `<verb>/<sub>` (`retrieve`, `index/add`). See
+  [the method set](/methods/overview).
+</ParamField>
+<ParamField path="params" type="object" required>
+  Always an object (never positional). May carry a `_meta` object.
+</ParamField>
+
+## Response
+
+The server echoes the request `id` and returns either `result` (success) or
+`error` (failure) — never both.
+
+<CodeGroup>
+```json Success
+{ "jsonrpc": "2.0", "id": 1, "result": { "hits": [] } }
+```
+
+```json Error
+{ "jsonrpc": "2.0", "id": 1, "error": { "code": -32004, "message": "unknown method" } }
+```
+</CodeGroup>
+
+<ResponseField name="result" type="object">
+  Present on success. The method-specific payload.
+</ResponseField>
+<ResponseField name="error" type="object">
+  Present on failure — `{ code, message, data? }`. See [Errors](/concepts/errors).
+</ResponseField>
+
+<Warning>
+Servers **MUST** echo the request `id` unchanged (same JSON type and value). A
+`null` id in a response denotes a reply to an unparseable request, per JSON-RPC.
+</Warning>
+
+## Notifications
+
+A message with **no `id`** is a notification and **MUST NOT** be answered. RCP/1
+defines three, all under the reserved `notifications/` prefix:
+
+| Notification | Direction | Purpose |
+|--------------|-----------|---------|
+| `notifications/progress` | server → client | Incremental progress during a long call. See [Streaming & progress](/features/streaming-progress). |
+| `notifications/cancel` | client → server | Abandon an in-flight request. See [Lifecycle](/concepts/lifecycle). |
+| `notifications/log` | server → client | Structured diagnostics. See [Observability](/features/observability). |
+
+<Note>
+A peer **MUST** silently ignore any `notifications/*` method it does not
+recognise — there is no `id`, so there is nothing to answer. This is what lets a
+future revision add notifications without breaking older peers.
+</Note>
+
+## Concurrency & ordering
+
+A client **MAY** have multiple requests in flight on one connection
+(pipelining). A server **MAY** answer them in any order and process them
+concurrently — so clients **MUST** correlate responses by `id`, not by arrival
+order.
+
+<Warning>
+`initialize` is the one exception: a client **MUST NOT** send any other request
+until it has received the `initialize` response.
+</Warning>
+
+## The `_meta` channel
+
+Every `params` and `result` object **MAY** carry a `_meta` object for
+implementation-specific data — timings, trace ids, a `progressToken`, a session
+token. Peers **MUST** ignore `_meta` keys they do not understand. This is the
+primary forward-compatibility seam; see [Extensibility](/concepts/extensibility).
+
+## Data-type conventions
+
+RCP uses only standard JSON types, with a few normative rules:
+
+<AccordionGroup>
+  <Accordion title="Numbers, absent vs null, enums">
+    - **Integers** (`k`, `dimension`, `topN`) are JSON numbers with no fractional
+      part and **MUST** fit a signed 53-bit range — never emitted as strings.
+    - **Floats** (`score`, `lambda`, `progress`) are JSON numbers. `NaN` and
+      `Infinity` are not valid JSON and **MUST NOT** be emitted.
+    - **Absent ≠ `null`.** An absent optional field means "use the default";
+      producers **SHOULD** omit optionals rather than send `null`, and receivers
+      treat `null` as absent unless a schema lists `null` as permitted.
+    - **Enums** are lower-case strings compared case-sensitively (`"hybrid"`,
+      `"cross-encoder"`).
+    - **Unknown fields MUST be ignored**, never rejected (forward compatibility)
+      — except `filter` field names, which are validated against the advertised
+      set.
+  </Accordion>
+  <Accordion title="Scores are not comparable across servers">
+    `Hit.score` and `rerank` scores are **server-defined** and only guaranteed
+    monotonic (higher = more relevant) *within a single response from one
+    server*. They are not normalised and not comparable across servers or calls.
+    Cross-engine merging **MUST** use ranks (RRF), not raw scores. The one
+    exception is `trust.score`, normalised to `[0,1]`.
+  </Accordion>
+</AccordionGroup>
+
+## Content blocks & modality
+
+Retrieval is no longer text-only. Wherever a query, passage, or document body
+appears, RCP accepts a **Content block** — a tagged union:
+
+```json
+{ "type": "text",  "text": "attention is all you need" }
+{ "type": "image", "mimeType": "image/png", "data": "<base64>" }
+{ "type": "image", "mimeType": "image/png", "uri": "https://…/page-3.png" }
+{ "type": "blob",  "mimeType": "audio/wav", "uri": "file:///clip.wav" }
+```
+
+- `type` is `"text"`, `"image"`, `"audio"`, or `"blob"`. A block carries its
+  payload inline as base64 `data` **or** by reference as `uri` (never both);
+  `mimeType` is **REQUIRED** for non-text blocks.
+- A **bare string is exactly equivalent to** `{"type":"text","text":"…"}`, so the
+  common text path stays terse while multimodality (ColPali, CLIP, audio) is
+  first-class. Servers advertise the modalities they accept per capability
+  (`embed.modalities`, `retrieve.modalities`); the default is `["text"]`.
+
+<Info>
+Full normative details — byte limits, timestamp encodings, the compatibility
+envelope — live in [§4 of the specification](/reference/specification).
+</Info>

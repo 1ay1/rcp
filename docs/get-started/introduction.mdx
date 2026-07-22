@@ -1,0 +1,95 @@
+---
+title: Introduction
+description: What RCP is, who it's for, and the problem it solves.
+icon: hand-wave
+---
+
+Every RAG stack reinvents the same wire: **embed, rerank, retrieve, filter, cite.**
+Swapping a vector database, adding a reranker, or wiring in a second knowledge
+base means rewriting glue code. MCP standardised *tools*; ACP standardised
+*agents*; **nothing standardised the retrieval layer that grounds them.**
+
+**RCP is that layer** — a small, versioned, JSON-RPC 2.0 contract that a
+*powerful* engine can fully express and a *thin* client can fully consume.
+
+<Note>
+  RCP is **transport-free** and **language-agnostic**. A server is any process
+  that reads newline-delimited JSON on stdio or accepts HTTP POSTs. A client is
+  anything that can send one.
+</Note>
+
+## The four pillars
+
+<CardGroup cols={2}>
+  <Card title="Capability-negotiated" icon="handshake">
+    A server advertises exactly what it can do (`embed`, `sparseEmbed`,
+    `multiVector`, `rerank`, `retrieve`, `transform`, `graph`, `index`,
+    `catalog`). Clients gate calls on capabilities — no probing, no surprises.
+  </Card>
+  <Card title="SOTA-complete" icon="bolt">
+    Hybrid (dense + learned-sparse) search, ColBERT/ColPali late interaction,
+    SPLADE, multi-stage rerank cascades, MMR diversification, contextual
+    retrieval, GraphRAG (local/global/drift), agentic multi-hop, citations,
+    streaming, and metadata filtering are all first-class.
+  </Card>
+  <Card title="Transport-free" icon="shuffle">
+    JSON-RPC 2.0 over newline-delimited stdio *or* HTTP. If it can read a line
+    and parse JSON, it can speak RCP.
+  </Card>
+  <Card title="Composable" icon="puzzle-piece">
+    A registry (`rcp.json`) or a `catalog`-capable aggregator lets a client
+    target one backend (**Selector**) or fuse many (**Federation**).
+  </Card>
+</CardGroup>
+
+## Who is this for?
+
+<CardGroup cols={3}>
+  <Card title="Engine authors" icon="server">
+    Implement one server and reach every RCP client.
+  </Card>
+  <Card title="Agent & IDE builders" icon="robot">
+    Pull grounding context from any engine without bespoke adapters.
+  </Card>
+  <Card title="Platform teams" icon="layer-group">
+    Federate several knowledge bases behind one uniform wire.
+  </Card>
+</CardGroup>
+
+## A ten-line taste
+
+The whole protocol is JSON-RPC. Here is a `retrieve` round-trip:
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "retrieve",
+  "params": { "query": "the eiffel tower", "k": 3, "mode": "hybrid" }
+}
+```
+
+```json Response
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "hits": [
+      { "id": "d1", "score": 0.82, "text": "The Eiffel Tower is a wrought-iron lattice tower in Paris, France." }
+    ]
+  }
+}
+```
+</CodeGroup>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/get-started/architecture">
+    Roles, the pipeline model, and how RCP sits beside MCP and ACP.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/get-started/quickstart">
+    A working engine and client in under five minutes.
+  </Card>
+</CardGroup>

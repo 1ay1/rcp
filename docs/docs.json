@@ -1,0 +1,160 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "Retrieval Context Protocol",
+  "description": "RCP is one open, versioned JSON-RPC protocol so any RAG engine — any language, any vendor — can expose embed, rerank, retrieve, graph, and index, and any client can consume it uniformly. The retrieval companion to MCP and ACP.",
+  "colors": {
+    "primary": "#10b981",
+    "light": "#34d399",
+    "dark": "#059669"
+  },
+  "background": {
+    "color": {
+      "light": "#fbfbf9",
+      "dark": "#0d1117"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Lora",
+      "format": "woff2"
+    },
+    "body": {
+      "family": "Inter",
+      "format": "woff2"
+    }
+  },
+  "favicon": {
+    "light": "/favicon.svg",
+    "dark": "/favicon.svg"
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://github.com/1ay1/rcp"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Specification",
+        "href": "https://github.com/1ay1/rcp/blob/main/spec/rcp-1.0.md"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "GitHub",
+      "href": "https://github.com/1ay1/rcp"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "pages": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "index",
+              "get-started/introduction",
+              "get-started/architecture",
+              "get-started/quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/pipeline",
+              "concepts/message-format",
+              "concepts/transports",
+              "concepts/capabilities",
+              "concepts/initialization",
+              "concepts/errors",
+              "concepts/lifecycle",
+              "concepts/extensibility"
+            ]
+          },
+          {
+            "group": "Methods",
+            "pages": [
+              "methods/overview",
+              "methods/embed",
+              "methods/rerank",
+              "methods/retrieve",
+              "methods/query-transform",
+              "methods/graph",
+              "methods/index",
+              "methods/catalog"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/metadata-filtering",
+              "features/streaming-progress",
+              "features/pagination",
+              "features/batching",
+              "features/federation",
+              "features/observability"
+            ]
+          },
+          {
+            "group": "Operating a Server",
+            "pages": [
+              "operating/security",
+              "operating/conformance"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDKs",
+        "pages": [
+          {
+            "group": "SDKs",
+            "pages": [
+              "sdks/overview",
+              "sdks/cpp",
+              "sdks/python",
+              "sdks/node"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "pages": [
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/specification",
+              "reference/schema",
+              "reference/glossary",
+              "reference/versioning",
+              "reference/changelog"
+            ]
+          },
+          {
+            "group": "Ecosystem",
+            "pages": [
+              "ecosystem/stack",
+              "ecosystem/mcp-acp"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/1ay1/rcp"
+    }
+  },
+  "seo": {
+    "metatags": {
+      "og:image": "/images/og.png"
+    }
+  },
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude"]
+  }
+}

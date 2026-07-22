@@ -1,0 +1,81 @@
+---
+title: Rerank
+description: Rescore a candidate set against the query with a cross-encoder, ColBERT late interaction, or an LLM judge.
+icon: arrow-down-wide-short
+---
+
+`rerank` is gated by **`rerank`**. It takes a query and a list of candidate
+passages and returns a relevance score for each — the precise, expensive second
+stage of a recall → rerank funnel.
+
+<CodeGroup>
+```json Request
+{
+  "jsonrpc": "2.0", "id": 1, "method": "rerank",
+  "params": {
+    "query": "efficient attention mechanisms",
+    "passages": [
+      "Performers use FAVOR+ to approximate softmax attention.",
+      "The Eiffel Tower is in Paris.",
+      "Linformer projects keys and values to a low-rank space."
+    ],
+    "method": "cross-encoder",
+    "topN": 2
+  }
+}
+```
+
+```json Response
+{ "jsonrpc": "2.0", "id": 1, "result": { "scores": [0.91, 0.02, 0.88], "order": [0, 2, 1] } }
+```
+</CodeGroup>
+
+## Params
+
+<ParamField path="query" type="string" required>
+  The query to score passages against.
+</ParamField>
+<ParamField path="passages" type="string[]" required>
+  The candidate passages to rescore.
+</ParamField>
+<ParamField path="method" type='"cross-encoder" | "colbert" | "llm"'>
+  The reranking strategy. **MUST** be one of the server's advertised
+  `rerank.methods`.
+</ParamField>
+<ParamField path="topN" type="integer">
+  Truncate to the best `topN` results (reflected in `order`).
+</ParamField>
+
+## Result
+
+<ResponseField name="scores" type="float[]">
+  `scores[i]` corresponds to `passages[i]`; higher is more relevant. Scores are
+  server-defined and only comparable within this one response.
+</ResponseField>
+<ResponseField name="order" type="integer[]">
+  Optional. The passage indices sorted best-first — convenient when `topN`
+  truncates.
+</ResponseField>
+
+## Reranking methods
+
+<CardGroup cols={3}>
+  <Card title="cross-encoder" icon="link">
+    Jointly encodes each (query, passage) pair for one relevance score. Most
+    accurate, one forward pass per candidate.
+  </Card>
+  <Card title="colbert" icon="table-cells">
+    Late interaction (MaxSim) over multi-vector representations — near
+    cross-encoder accuracy at bi-encoder speed.
+  </Card>
+  <Card title="llm" icon="robot">
+    An LLM judge scores or orders passages — flexible, slowest, best for small N.
+  </Card>
+</CardGroup>
+
+<Tip>
+You rarely need `rerank` directly: [`retrieve`](/methods/retrieve) can rerank
+**inside** a single call via its `rerank` option when the server advertises
+`retrieve.rerankBuiltin`. Reach for standalone `rerank` when you run your own
+recall stage or rerank a fused federation candidate set.
+</Tip>

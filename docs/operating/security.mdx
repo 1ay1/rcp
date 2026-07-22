@@ -1,0 +1,103 @@
+---
+title: Security
+description: RCP moves untrusted external content toward an LLM's context — its threat model is dominated by indirect prompt injection and provenance.
+icon: shield-halved
+---
+
+RCP moves *untrusted external content* toward an LLM's context window, so its
+threat model is dominated by two concerns absent from ordinary RPC: **indirect
+prompt injection** (retrieved text is itself adversarial) and **provenance /
+trust** of what gets grounded.
+
+<Warning>
+Implementers **MUST** treat retrieved content as untrusted **data**, never as
+instructions. No field of a `retrieve` result — `text`, `meta`, `citation` — is
+ever an RCP control instruction. There is no in-band mechanism by which retrieved
+content can change protocol behaviour.
+</Warning>
+
+## Indirect prompt injection
+
+Retrieved passages may contain text engineered to hijack a downstream LLM
+("ignore previous instructions…"). RCP can't neutralise this alone, but it is
+designed so a careful client can:
+
+<Steps>
+  <Step title="Servers populate provenance">
+    Servers **SHOULD** set `Hit.trust` with real provenance and **MUST NOT** label
+    user-generated or web-scraped content `"trusted"`.
+  </Step>
+  <Step title="Clients separate data from instructions">
+    Clients **SHOULD** keep retrieved content in a *data* channel distinct from
+    the instruction channel of any prompt, delimit it unambiguously, and
+    down-weight or quarantine `trust.level: "untrusted"` hits.
+  </Step>
+  <Step title="Never trust capability claims as guarantees">
+    A malicious server can claim `citations` and fabricate a `citation.uri`, or
+    label poisoned content `trusted`. Capability claims are hints for feature
+    negotiation, **not** security guarantees.
+  </Step>
+</Steps>
+
+## Trust boundaries
+
+<CardGroup cols={2}>
+  <Card title="stdio" icon="terminal">
+    A launched server runs with the launcher's privileges — it is *trusted code*.
+    Vet it as any dependency; pass least-privilege env and working directory.
+  </Card>
+  <Card title="HTTP" icon="globe">
+    **SHOULD** bind to loopback unless fronted by authenticated, encrypted
+    transport (TLS). Layer `Authorization`, mTLS, or API keys *before*
+    `initialize` — RCP defines no auth of its own.
+  </Card>
+</CardGroup>
+
+## Other considerations
+
+<AccordionGroup>
+  <Accordion title="Corpus / index poisoning" icon="syringe">
+    An attacker who can write to the index (via `index/add` or an upstream feed)
+    can plant documents crafted to rank highly and then inject or mislead.
+    Servers **SHOULD** authenticate `index/add`/`index/delete` independently of
+    read access, record provenance so tainted sources can be revoked, and **MAY**
+    expose `indexVersion` so a client can pin a vetted snapshot and audit changes.
+  </Accordion>
+  <Accordion title="Injection into the backing query engine" icon="database">
+    `filter` trees, `graph` ops, and `id`s flow into a real query engine (SQL, a
+    vector-DB filter DSL, Cypher). Servers **MUST** treat all `params` as
+    untrusted, validate `filter` field names against the advertised set,
+    **parameterise** rather than string-concatenate, reject unadvertised
+    operators with `-32602`, and **MUST NOT** evaluate client-supplied
+    expressions as code.
+  </Accordion>
+  <Accordion title="Resource exhaustion & DoS" icon="gauge-high">
+    Servers **MUST** enforce `maxK` / `maxCandidates` / `batchLimit`, **SHOULD**
+    cap body size, embedding batch size, `graph` hops, and `candidateK`, apply
+    per-client rate limiting and per-request deadlines, and bound
+    `query/transform` fan-out. Clients **MUST** bound their own fan-out and set
+    deadlines when federating.
+  </Accordion>
+  <Accordion title="SSRF via Content URIs" icon="link-slash">
+    Fetching a Content `uri` is an SSRF vector. A server **MUST** restrict which
+    schemes/hosts it will dereference and **SHOULD** default to refusing `file://`
+    and private-network URIs unless explicitly configured.
+  </Accordion>
+  <Accordion title="Data protection & multi-tenancy" icon="user-lock">
+    Queries and text may contain PII. Servers **SHOULD NOT** log full bodies by
+    default and **SHOULD** support redaction. A multi-tenant server **MUST** scope
+    retrieval to the caller's authorised corpus and **MUST NOT** leak one tenant's
+    documents to another via shared `id` spaces or `catalog/list`.
+  </Accordion>
+  <Accordion title="Supply chain & versioning" icon="box">
+    Pin server binaries and model identities (`embed.identity`) — a silent model
+    swap changes the embedding space and corrupts a client-side ANN index. Treat
+    `indexVersion` and `embed.identity` as part of a reproducible retrieval
+    configuration.
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+The complete normative threat model is [§15 of the
+specification](/reference/specification).
+</Info>

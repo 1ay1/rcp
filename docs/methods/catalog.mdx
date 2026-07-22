@@ -1,0 +1,57 @@
+---
+title: Catalog
+description: Discover the downstream engines an aggregator federates — the introspection method behind gateways and federation.
+icon: folder-tree
+---
+
+`catalog/list` is gated by **`catalog`**. It is advertised by an **aggregator** (a
+gateway that fronts several downstream engines) and lets a client discover what
+sits behind it — the introspection primitive behind [Federation](/features/federation).
+
+<CodeGroup>
+```json Request
+{ "jsonrpc": "2.0", "id": 1, "method": "catalog/list", "params": {} }
+```
+
+```json Response
+{
+  "jsonrpc": "2.0", "id": 1, "result": {
+    "engines": [
+      { "id": "docs", "info": { "name": "docs-engine", "version": "1.2" },
+        "capabilities": { "retrieve": { "modes": ["hybrid"] } } },
+      { "id": "web", "info": { "name": "web-engine", "version": "0.9" },
+        "capabilities": { "retrieve": { "modes": ["dense"] }, "graph": { "ops": ["local"] } } }
+    ]
+  }
+}
+```
+</CodeGroup>
+
+## Result
+
+<ResponseField name="engines" type="object[]">
+  One entry per downstream engine, each `{ id, info, capabilities }` — the same
+  identity and capability shapes returned by
+  [`initialize`](/concepts/initialization). A client can therefore reason about
+  each backend's abilities without connecting to it directly.
+</ResponseField>
+
+## Aggregators vs single engines
+
+<CardGroup cols={2}>
+  <Card title="Single engine" icon="server">
+    Advertises retrieval capabilities (`retrieve`, `rerank`, …) and serves them
+    directly. No `catalog`.
+  </Card>
+  <Card title="Aggregator / gateway" icon="sitemap">
+    Advertises `catalog`, fronts many engines, and either routes to one or fuses
+    all of them. `catalog/list` enumerates the fleet.
+  </Card>
+</CardGroup>
+
+<Info>
+`catalog` makes an aggregator **self-describing**: a client points at one
+endpoint, calls `catalog/list`, and learns the whole federated topology. This is
+how a client-side [Selector or Federation](/features/federation) can also be
+driven entirely server-side behind a single URL.
+</Info>

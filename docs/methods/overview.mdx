@@ -1,0 +1,58 @@
+---
+title: The method set
+description: Every RCP method, the capability that gates it, and its purpose.
+icon: list
+---
+
+Every method after `initialize` is **gated** by a capability the server
+advertised. Clients check `supports(...)` before calling — failures surface
+*client-side* as `CapabilityMissing` (`-32003`) before any I/O.
+
+| Method | Capability | Purpose |
+|--------|-----------|---------|
+| [`initialize`](/concepts/initialization) / [`info`](/concepts/initialization) | always | Version + capability handshake / stateless identity. |
+| [`embed`](/methods/embed) | `embed` | Dense embeddings. |
+| [`embed/sparse`](/methods/embed) | `sparseEmbed` | Learned-sparse terms (SPLADE). |
+| [`embed/multi`](/methods/embed) | `multiVector` | Per-token / per-patch vectors (ColBERT, ColPali). |
+| [`rerank`](/methods/rerank) | `rerank` | Cross-encoder / late-interaction scoring. |
+| [`retrieve`](/methods/retrieve) | `retrieve` | The workhorse — mode, filter, rerank, MMR, recency, citations. |
+| [`query/transform`](/methods/query-transform) | `transform` | Expansion / HyDE / decomposition. |
+| [`graph`](/methods/graph) | `graph` | GraphRAG local / global / drift. |
+| [`index/add`, `index/delete`](/methods/index) | `index` | Mutate the corpus. |
+| [`catalog/list`](/methods/catalog) | `catalog` | Enumerate federated engines. |
+| [`notifications/cancel`](/concepts/lifecycle) | always | Abandon an in-flight request. |
+| [`notifications/log`](/features/observability) | `log` | Server-emitted structured diagnostics. |
+| [`ping`](/concepts/lifecycle) | always | Liveness / round-trip; echoes a nonce. |
+| [`shutdown`](/concepts/lifecycle) | always | Graceful close. |
+
+<Note>
+`retrieve` is the workhorse: a single call can drive query transform, hybrid
+recall, rerank, MMR diversification, recency weighting, metadata filtering, and
+citation assembly — whatever the engine advertises.
+</Note>
+
+## Naming conventions
+
+- Method names are `<verb>` or `<verb>/<sub>` — `retrieve`, `index/add`.
+- The `notifications/` prefix is reserved for protocol notifications (no `id`).
+- The `x-<vendor>/<name>` space is for [vendor extensions](/concepts/extensibility).
+
+## Always-available methods
+
+Four methods need **no capability** and (except where noted) work at any time:
+
+<CardGroup cols={2}>
+  <Card title="initialize / info" icon="play" href="/concepts/initialization">
+    Handshake and stateless identity. `info` and `ping` answer even before
+    `initialize`.
+  </Card>
+  <Card title="ping" icon="wifi" href="/concepts/lifecycle">
+    Liveness and round-trip timing; echoes a nonce.
+  </Card>
+  <Card title="shutdown" icon="power-off" href="/concepts/lifecycle">
+    Graceful close; EOF on stdin is equivalent.
+  </Card>
+  <Card title="notifications/cancel" icon="ban" href="/concepts/lifecycle">
+    Abandon an in-flight request; best-effort, no response.
+  </Card>
+</CardGroup>
