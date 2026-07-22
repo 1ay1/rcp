@@ -56,12 +56,16 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 python3 conformance/check.py -- node sdk/node/examples/example_server.js
 ```
 
+```sh Rust engine (stdio)
+python3 conformance/check.py -- ./sdk/rust/target/debug/examples/example_server
+```
+
 ```sh Any engine (HTTP)
 python3 conformance/check.py --http http://127.0.0.1:8000/rcp
 ```
 </CodeGroup>
 
-All three reference example servers pass **10/10** over both stdio and HTTP, and
+All four reference example servers pass **10/10** over both stdio and HTTP, and
 every SDK's client drives every other SDK's server.
 
 ## Conforming clients

@@ -1,0 +1,26 @@
+[package]
+name = "rcp-protocol"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.70"
+description = "Retrieval Context Protocol — native Rust SDK (zero dependencies)"
+license = "MIT"
+repository = "https://github.com/1ay1/rcp"
+homepage = "https://github.com/1ay1/rcp"
+keywords = ["rcp", "rag", "retrieval", "json-rpc", "mcp"]
+categories = ["api-bindings", "text-processing"]
+
+[lib]
+name = "rcp"
+path = "src/lib.rs"
+
+# Zero dependencies: the SDK is built entirely on the Rust standard library.
+[dependencies]
+
+[[example]]
+name = "example_server"
+path = "examples/example_server.rs"
+
+[[example]]
+name = "example_client"
+path = "examples/example_client.rs"

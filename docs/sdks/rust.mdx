@@ -1,0 +1,118 @@
+---
+title: Rust SDK
+description: A native Rust SDK — zero dependencies, synchronous, built entirely on the standard library.
+icon: rust
+---
+
+The Rust SDK (`rcp-protocol`, imported as `rcp`) is built entirely on the Rust
+standard library — **no dependencies**. Like the C++ SDK vendors `json.hpp`, this
+crate vendors a small JSON value type, so you never need `serde` to speak RCP. It
+is synchronous and blocking; every call returns `Result<_, RcpError>`, and it
+interoperates byte-for-byte with the C++, Python, and Node.js SDKs.
+
+## Add it
+
+```toml
+[dependencies]
+rcp-protocol = { path = "sdk/rust" }   # or a git / crates.io dependency
+```
+
+Requires Rust 1.70+.
+
+## Server
+
+Handlers are `FnMut(&Json) -> Result<Json, RcpError>`.
+
+```rust
+use rcp::{obj, Capability, Json, Method, Server};
+
+fn main() {
+    let mut s = Server::new();
+    s.set_info("my-engine", "1.0");
+    s.advertise(Capability::Retrieve, obj(&[("maxK", 200.into())]));
+    s.advertise(Capability::Embed, obj(&[("dimension", 384.into())]));
+
+    s.on(Method::RETRIEVE, |params| {
+        let q = params.get_str("query").unwrap_or("");
+        let hits = my_index_search(q); // -> Json array of { id, score, text }
+        Ok(obj(&[("hits", hits)]))
+    });
+
+    s.on(Method::EMBED, |params| {
+        let items = params.get("inputs").or_else(|| params.get("texts")); // inputs preferred
+        Ok(obj(&[("vectors", embed_all(items))]))
+    });
+
+    s.serve_stdio();          // or: s.serve_http(8000).unwrap();
+}
+```
+
+## Client
+
+Connect over stdio or HTTP, then make typed, capability-gated calls. A gated call
+to an unadvertised capability returns `Err(CapabilityMissing)` **before** any I/O.
+
+```rust
+use rcp::Capability;
+
+fn main() -> Result<(), rcp::RcpError> {
+    let mut c = rcp::connect_stdio(&["my_engine"])?;
+    // or: let mut c = rcp::connect_http("http://127.0.0.1:8000/rcp")?;
+
+    println!("{} (RCP/{})", c.server(), c.protocol_version());
+
+    if c.supports(Capability::Retrieve) {
+        for h in c.retrieve("eiffel tower", 3)? {
+            println!("{} {} {}", h.id, h.score, h.text);
+        }
+    }
+
+    if c.supports(Capability::Embed) {
+        let vecs = c.embed(&["hello world"], None)?;
+        println!("dim {}", vecs[0].len());
+    }
+
+    c.shutdown();
+    Ok(())
+}
+```
+
+The error carries the wire code and message; `Display` renders `"[RCP <code>]
+<message>"`:
+
+```rust
+match c.rerank("q", &["a", "b"]) {
+    Err(e) => assert_eq!(e.code, rcp::Errc::CAPABILITY_MISSING), // -32003
+    Ok(_) => {}
+}
+```
+
+Client methods: `embed`, `embed_sparse`, `embed_multi`, `rerank`, `retrieve`,
+`search` (returns `SearchResult { hits, usage, next_cursor }`), `graph`,
+`transform`, `index_add`, `index_delete`, `catalog`, `info`, `ping`, `call`,
+`shutdown`.
+
+## Selecting a backend
+
+```rust
+let sel = rcp::Selector::load("rcp.json")?;
+let mut c = sel.select_capable(rcp::Capability::Retrieve)?;
+```
+
+## The JSON value type
+
+`rcp::Json` is a small, ordered JSON value with `parse`, `Display` / `dump`,
+`get` / `get_str` / `as_*` accessors, `insert` / `push`, `From` impls, and the
+`rcp::obj(&[(key, value)])` builder — the reason the SDK stays dependency-free.
+
+## Test
+
+```sh
+cd sdk/rust
+cargo test     # incl. Rust client <-> C++ server + registry selector
+```
+
+<Info>
+The suite includes a case where the Rust client drives the **C++** example
+server, proving cross-language interop; `cargo clippy` is clean.
+</Info>

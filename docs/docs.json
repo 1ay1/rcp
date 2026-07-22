@@ -115,7 +115,8 @@
               "sdks/overview",
               "sdks/cpp",
               "sdks/python",
-              "sdks/node"
+              "sdks/node",
+              "sdks/rust"
             ]
           }
         ]

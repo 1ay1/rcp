@@ -1,13 +1,12 @@
 ---
 title: Quickstart
-description: Stand up an RCP engine and query it — in Python, Node.js, or C++ — in under five minutes.
+description: Stand up an RCP engine and query it — in Python, Node.js, Rust, or C++ — in under five minutes.
 icon: rocket
 ---
 
-RCP ships **three native SDKs** that speak the identical wire format: a
-header-only C++ SDK and pure-standard-library Python and Node.js SDKs (no
-compiler, no dependencies for the latter two). Any client can drive any server —
-cross-language interop is proven by the test suites.
+RCP ships **four native SDKs** that speak the identical wire format: a header-only
+C++ SDK and dependency-free Python, Node.js, and Rust SDKs. Any client can drive
+any server — cross-language interop is proven by the test suites.
 
 <Tabs>
 <Tab title="Python">
@@ -123,6 +122,53 @@ make examples    # example_server / client / selector / federation
 <Step title="Validate against the conformance suite">
 ```sh
 python3 conformance/check.py -- ./sdk/cpp/example_server
+```
+</Step>
+</Steps>
+
+</Tab>
+<Tab title="Rust">
+
+<Steps>
+<Step title="Write a server">
+```rust
+use rcp::{obj, Capability, Method, Server};
+
+fn main() {
+    let mut s = Server::new();
+    s.set_info("my-engine", "1.0");
+    s.advertise(Capability::Retrieve, obj(&[("maxK", 100.into())]));
+
+    s.on(Method::RETRIEVE, |params| {
+        let q = params.get_str("query").unwrap_or("");
+        Ok(obj(&[("hits", my_index_search(q))]))
+    });
+
+    s.serve_stdio();
+}
+```
+</Step>
+
+<Step title="Drive it from a client">
+```rust
+use rcp::Capability;
+
+fn main() -> Result<(), rcp::RcpError> {
+    let mut c = rcp::connect_stdio(&["my_engine"])?;
+    if c.supports(Capability::Retrieve) {
+        for h in c.retrieve("eiffel tower", 3)? {
+            println!("{} {}", h.id, h.score);
+        }
+    }
+    Ok(())
+}
+```
+</Step>
+
+<Step title="Run the tests (zero dependencies)">
+```sh
+cd sdk/rust
+cargo test
 ```
 </Step>
 </Steps>

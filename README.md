@@ -6,7 +6,7 @@
 
 The retrieval companion to [MCP](https://modelcontextprotocol.io) (tools) and [ACP](https://agentclientprotocol.com) (agents).
 
-[**Specification**](spec/rcp-1.0.md) · [**JSON Schema**](schema/rcp-1.0.json) · [**Docs**](docs) · [**C++ SDK**](sdk/cpp) · [**Python SDK**](sdk/python) · [**Node SDK**](sdk/node)
+[**Specification**](spec/rcp-1.0.md) · [**JSON Schema**](schema/rcp-1.0.json) · [**Docs**](docs) · [**C++ SDK**](sdk/cpp) · [**Python SDK**](sdk/python) · [**Node SDK**](sdk/node) · [**Rust SDK**](sdk/rust)
 
 `RCP/1` · JSON-RPC 2.0 · MIT
 
@@ -52,11 +52,11 @@ pagination — learn one, you know the shape of all three.
 
 ## SDKs
 
-RCP ships **three SDKs** that speak the identical wire format: a **type-theoretic
-C++ SDK** (header-only), a **native Python SDK**, and a **native Node.js SDK** —
-the Python and Node SDKs are pure standard library (no compiler, no dependencies,
-nothing to build). Cross-language interop is proven by the test suites: every
-client drives every server, in any combination.
+RCP ships **four SDKs** that speak the identical wire format: a **type-theoretic
+C++ SDK** (header-only), a **native Python SDK**, a **native Node.js SDK**, and a
+**native Rust SDK** — the Python, Node, and Rust SDKs are dependency-free (the
+last three need no external crates or packages at all). Cross-language interop is
+proven by the test suites: every client drives every server, in any combination.
 
 The C++ SDK pushes protocol invariants into the type system, proved at **compile
 time**:
@@ -140,6 +140,25 @@ struct Engine {
 int main() { Server{Engine{}}.serve_stdio(); }
 ```
 
+### Rust
+
+```rust
+use rcp::{obj, Capability, Method, Server};
+
+fn main() {
+    let mut s = Server::new();
+    s.set_info("my-engine", "1.0");
+    s.advertise(Capability::Retrieve, obj(&[("maxK", 100.into())]));
+
+    s.on(Method::RETRIEVE, |params| {
+        let q = params.get_str("query").unwrap_or("");
+        Ok(obj(&[("hits", search(q))]))
+    });
+
+    s.serve_stdio(); // client: rcp::connect_stdio(&["my_engine"])?.retrieve("q", 3)?
+}
+```
+
 ## Many engines, two models
 
 Both routing models layer on the core `retrieve` + capability handshake — **zero
@@ -202,6 +221,13 @@ cd sdk/node
 node test.js   # in-proc server + client↔C++ server + selector
 ```
 
+**Rust** (zero dependencies — vendors its own JSON, no `serde`):
+
+```sh
+cd sdk/rust
+cargo test     # in-proc server + client↔C++ server + registry selector
+```
+
 **Conformance** — validate any server, in any language:
 
 ```sh
@@ -216,6 +242,7 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 - `sdk/cpp/` — the type-theoretic C++ SDK (header-only) + examples + tests.
 - `sdk/python/` — the native Python `rcp` package (standard library only).
 - `sdk/node/` — the native Node.js `rcp-protocol` package (standard library only).
+- `sdk/rust/` — the native Rust `rcp-protocol` crate (zero dependencies).
 - `conformance/` — transport-agnostic conformance suite.
 - `examples/` — runnable Python client/server.
 - `docs/` — the documentation website ([Mintlify](https://mintlify.com)); each

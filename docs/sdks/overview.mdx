@@ -4,11 +4,11 @@ description: Three native SDKs — C++, Python, and Node.js — that speak the i
 icon: cubes
 ---
 
-RCP ships **three native SDKs** that speak the identical wire format. Any client
+RCP ships **four native SDKs** that speak the identical wire format. Any client
 drives any server across languages — proven by each SDK's test suite and the
 shared conformance runner.
 
-<CardGroup cols={3}>
+<CardGroup cols={2}>
   <Card title="C++" icon="c" href="/sdks/cpp">
     Header-only, C++23, type-theoretic. Protocol invariants proved at compile
     time.
@@ -18,6 +18,9 @@ shared conformance runner.
   </Card>
   <Card title="Node.js" icon="node-js" href="/sdks/node">
     Pure standard library, ESM, async. Zero dependencies.
+  </Card>
+  <Card title="Rust" icon="rust" href="/sdks/rust">
+    Zero dependencies, synchronous, `Result`-typed. Vendors its own JSON.
   </Card>
 </CardGroup>
 
@@ -36,19 +39,20 @@ shared conformance runner.
 
 ## The shared shape
 
-The three SDKs deliberately mirror each other (idiomatic per language):
+The four SDKs deliberately mirror each other (idiomatic per language):
 
-| Concept | C++ | Python | Node.js |
-|---------|-----|--------|---------|
-| Connect (stdio) | `Client::connect_stdio(argv)` | `rcp.connect_stdio(argv)` | `await rcp.connectStdio(argv)` |
-| Capability check | `c.supports(Capability::Retrieve)` | `c.supports(rcp.Capability.Retrieve)` | `c.supports(rcp.Capability.Retrieve)` |
-| Retrieve | `c.retrieve(q, k)` | `c.retrieve(q, k=…)` | `await c.retrieve(q, k)` |
-| Advertise | `Capabilities{}.with_retrieve({…})` | `s.advertise(Capability.Retrieve, {…})` | `s.advertise(Capability.Retrieve, {…})` |
-| Handle | concept-gated hook | `@s.on(Method.RETRIEVE)` | `s.on(Method.RETRIEVE, fn)` |
-| Serve | `srv.serve_stdio()` | `s.serve_stdio()` | `await s.serveStdio()` |
+| Concept | C++ | Python | Node.js | Rust |
+|---------|-----|--------|---------|------|
+| Connect (stdio) | `Client::connect_stdio(argv)` | `rcp.connect_stdio(argv)` | `await rcp.connectStdio(argv)` | `rcp::connect_stdio(&argv)?` |
+| Capability check | `c.supports(Capability::Retrieve)` | `c.supports(rcp.Capability.Retrieve)` | `c.supports(rcp.Capability.Retrieve)` | `c.supports(Capability::Retrieve)` |
+| Retrieve | `c.retrieve(q, k)` | `c.retrieve(q, k=…)` | `await c.retrieve(q, k)` | `c.retrieve(q, k)?` |
+| Advertise | `Capabilities{}.with_retrieve({…})` | `s.advertise(Capability.Retrieve, {…})` | `s.advertise(Capability.Retrieve, {…})` | `s.advertise(Capability::Retrieve, meta)` |
+| Handle | concept-gated hook | `@s.on(Method.RETRIEVE)` | `s.on(Method.RETRIEVE, fn)` | `s.on(Method::RETRIEVE, \|p\| …)` |
+| Serve | `srv.serve_stdio()` | `s.serve_stdio()` | `await s.serveStdio()` | `s.serve_stdio()` |
 
 <Info>
 Cross-language interop is not aspirational: the Python and Node test suites each
-include a case where their client drives the **C++** example server, and the
-conformance suite runs against all three servers over stdio and HTTP.
+include a case where their client drives the **C++** example server, the Rust
+suite drives both the C++ and Python servers, and the conformance suite runs
+against all four servers over stdio and HTTP.
 </Info>
