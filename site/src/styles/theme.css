@@ -1,318 +1,292 @@
 /* ============================================================================
-   RCP brand theme — "signal" identity.
-   Editorial, high-contrast, infra-grade. Deep ink backgrounds, an electric
-   teal→emerald signal accent, warm amber highlight, sharp geometric type.
-   Distinct from ACP (corporate blue) and MCP.
+   RCP brand theme — "signal".
+   Infra-grade, editorial, high-contrast. Deep-ink surfaces, an electric
+   teal→emerald signal accent, warm amber for numerals/highlights, geometric
+   display type. Distinct from ACP (blue) and MCP.
    ============================================================================ */
 
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
-/* ---- Dark (default) --------------------------------------------------- */
+/* ---------------------------------------------------------------- Dark ---- */
 :root {
   color-scheme: dark;
 
-  /* Signal accent — electric teal */
-  --sl-color-accent-low: #052e2b;
+  --sl-color-accent-low: #05302c;
   --sl-color-accent: #17e6c3;
-  --sl-color-accent-high: #a7ffee;
+  --sl-color-accent-high: #b6fff0;
 
-  /* Warm secondary highlight (amber) used in gradients + rules */
-  --rcp-amber: #ffb454;
+  --rcp-amber: #ffc06a;
   --rcp-signal: #17e6c3;
   --rcp-signal-2: #34d399;
 
-  /* Deep-ink neutral ramp (slightly cool near-black) */
-  --sl-color-white: #f4f7f7;
-  --sl-color-gray-1: #e3e9e9;
-  --sl-color-gray-2: #b6c0c0;
-  --sl-color-gray-3: #7f8b8b;
-  --sl-color-gray-4: #4a5555;
-  --sl-color-gray-5: #29302f;
-  --sl-color-gray-6: #171d1c;
-  --sl-color-black: #0b0f0e;
+  --sl-color-white: #f3f7f6;
+  --sl-color-gray-1: #e0e7e6;
+  --sl-color-gray-2: #b3bebc;
+  --sl-color-gray-3: #7c8886;
+  --sl-color-gray-4: #495250;
+  --sl-color-gray-5: #262d2c;
+  --sl-color-gray-6: #161b1a;
+  --sl-color-black: #0a0e0d;
 
-  /* Surfaces */
-  --sl-color-bg: #0b0f0e;
-  --sl-color-bg-nav: rgba(11, 15, 14, 0.72);
-  --sl-color-bg-sidebar: #0d1211;
+  --sl-color-bg: #0a0e0d;
+  --sl-color-bg-nav: color-mix(in srgb, #0a0e0d 78%, transparent);
+  --sl-color-bg-sidebar: #0c1110;
+  --sl-color-bg-inline-code: color-mix(in srgb, var(--rcp-signal) 12%, transparent);
 
-  --rcp-gradient: linear-gradient(100deg, #17e6c3 0%, #34d399 40%, #ffb454 105%);
-  --rcp-glow: 0 0 0 1px rgba(23, 230, 195, 0.14), 0 12px 40px -12px rgba(23, 230, 195, 0.4);
+  --rcp-gradient: linear-gradient(100deg, #17e6c3 0%, #34d399 55%, #46e39a 100%);
+  --rcp-gradient-warm: linear-gradient(100deg, #17e6c3 0%, #34d399 45%, #ffc06a 115%);
+  --rcp-glow: 0 0 0 1px color-mix(in srgb, var(--rcp-signal) 16%, transparent), 0 16px 46px -16px color-mix(in srgb, var(--rcp-signal) 45%, transparent);
 
   --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --sl-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --__rcp-head: "Space Grotesk", var(--sl-font);
+
+  --sl-nav-height: 4rem;
 }
 
-/* Headings use the geometric face */
-:root {
-  --__rcp-head: "Space Grotesk", var(--sl-font);
-}
 h1, h2, h3, h4,
-.hero h1,
 .sl-markdown-content h1,
 .sl-markdown-content h2,
-.sl-markdown-content h3 {
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
   font-family: var(--__rcp-head);
-  letter-spacing: -0.018em;
+  letter-spacing: -0.02em;
+  font-weight: 600;
 }
 
-/* ---- Light --------------------------------------------------------------- */
+/* --------------------------------------------------------------- Light ---- */
 :root[data-theme="light"] {
   color-scheme: light;
-  --sl-color-accent-low: #c8f5ec;
-  --sl-color-accent: #009e83;
-  --sl-color-accent-high: #044a3f;
+  --sl-color-accent-low: #c4f3ea;
+  --sl-color-accent: #00937b;
+  --sl-color-accent-high: #013a31;
 
-  --sl-color-white: #0b1413;
-  --sl-color-gray-1: #17201f;
-  --sl-color-gray-2: #35403f;
-  --sl-color-gray-3: #5a6564;
-  --sl-color-gray-4: #8b9694;
-  --sl-color-gray-5: #d3dbda;
-  --sl-color-gray-6: #eef3f2;
-  --sl-color-gray-7: #f6f9f8;
+  --sl-color-white: #0a1413;
+  --sl-color-gray-1: #16201e;
+  --sl-color-gray-2: #33403d;
+  --sl-color-gray-3: #586562;
+  --sl-color-gray-4: #8a9693;
+  --sl-color-gray-5: #d3dbd9;
+  --sl-color-gray-6: #eaf1ef;
+  --sl-color-gray-7: #f4f8f7;
   --sl-color-black: #ffffff;
 
-  --sl-color-bg: #f7faf9;
-  --sl-color-bg-nav: rgba(247, 250, 249, 0.8);
-  --sl-color-bg-sidebar: #eef3f2;
+  --sl-color-bg: #f6faf9;
+  --sl-color-bg-nav: color-mix(in srgb, #f6faf9 82%, transparent);
+  --sl-color-bg-sidebar: #eef4f2;
+  --sl-color-bg-inline-code: color-mix(in srgb, var(--rcp-signal) 16%, transparent);
 
-  --rcp-signal: #009e83;
-  --rcp-gradient: linear-gradient(100deg, #009e83 0%, #10b981 45%, #e07b00 110%);
-  --rcp-glow: 0 0 0 1px rgba(0, 158, 131, 0.15), 0 12px 34px -14px rgba(0, 158, 131, 0.35);
+  --rcp-amber: #b06a00;
+  --rcp-signal: #00937b;
+  --rcp-gradient: linear-gradient(100deg, #00937b 0%, #10b981 60%, #1bb56f 100%);
+  --rcp-gradient-warm: linear-gradient(100deg, #00937b 0%, #10b981 45%, #cc7a00 115%);
+  --rcp-glow: 0 0 0 1px color-mix(in srgb, var(--rcp-signal) 18%, transparent), 0 16px 40px -18px color-mix(in srgb, var(--rcp-signal) 40%, transparent);
 }
 
-/* ============================================================================
-   Global texture — a faint dotted grid + top accent aurora on every page.
-   ============================================================================ */
+/* ============================================================= Texture ==== */
 body {
   background-image:
-    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--rcp-signal) 9%, transparent), transparent 50%),
-    radial-gradient(color-mix(in srgb, var(--sl-color-gray-4) 28%, transparent) 0.7px, transparent 0.7px);
-  background-size: 100% 560px, 28px 28px;
+    radial-gradient(60rem 30rem at 50% -8rem, color-mix(in srgb, var(--rcp-signal) 8%, transparent), transparent),
+    radial-gradient(color-mix(in srgb, var(--sl-color-gray-4) 24%, transparent) 0.6px, transparent 0.6px);
+  background-size: 100% 40rem, 30px 30px;
   background-repeat: no-repeat, repeat;
   background-attachment: fixed, fixed;
 }
 
-/* Header: glassy + hairline accent underline */
+/* ============================================================== Header ==== */
 .header {
-  backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
   background: var(--sl-color-bg-nav);
-  border-bottom: 1px solid color-mix(in srgb, var(--rcp-signal) 18%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--sl-color-gray-5) 90%, var(--rcp-signal));
 }
+.site-title { font-family: var(--__rcp-head); font-weight: 700; letter-spacing: -0.01em; }
 
-/* Sidebar accent for the active link */
-.sidebar a[aria-current="page"] {
+/* Search box a touch softer */
+.header .sl-flex > button[aria-label] { border-radius: 8px; }
+
+/* ============================================================= Sidebar ==== */
+.sidebar-content a {
+  border-radius: 7px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.sidebar-content a:hover { background: color-mix(in srgb, var(--sl-color-gray-6) 80%, transparent); }
+.sidebar-content a[aria-current="page"] {
   color: var(--sl-color-accent-high);
-  background: color-mix(in srgb, var(--rcp-signal) 12%, transparent);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--rcp-signal) 13%, transparent);
   box-shadow: inset 2px 0 0 var(--rcp-signal);
-}
-
-/* ============================================================================
-   Splash / landing hero
-   ============================================================================ */
-.hero {
-  position: relative;
-  padding-block: clamp(3rem, 8vw, 6rem) clamp(2rem, 5vw, 4rem);
-}
-
-/* Single-column, left-aligned hero (no floating logo image). */
-.hero {
-  display: block;
-}
-.hero > .hero-html { display: none; }        /* hide the (now unused) image slot */
-.hero .stack {
-  max-width: 62ch;
-  margin-inline: auto;
-  align-items: flex-start;
-  text-align: left;
-}
-
-/* Badge leads the tagline block, styled as a small status chip. */
-.rcp-badge-br { display: block; height: 0.9rem; content: ""; }
-.hero .tagline .rcp-badge { display: inline-block; }
-
-.hero h1 {
-  font-weight: 700;
-  font-size: clamp(2.6rem, 6.5vw, 4.4rem);
-  line-height: 1.02;
-  margin: 0;
-  background: var(--rcp-gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.hero .tagline {
-  color: var(--sl-color-gray-2);
-  font-size: clamp(1.05rem, 2vw, 1.25rem);
-  line-height: 1.55;
-  max-width: 54ch;
-}
-.hero .tagline b { color: var(--sl-color-white); font-weight: 600; }
-
-/* Action buttons — sharper radius, tighter, less "toy". */
-.hero .actions {
-  gap: 0.7rem;
-  margin-top: 0.5rem;
-}
-.hero .actions .sl-link-button {
-  border-radius: 8px;
-  font-size: 0.95rem;
-  padding: 0.62rem 1.2rem;
-}
-.hero .actions .sl-link-button.primary {
-  background: var(--rcp-gradient);
-  border: none;
-  color: #06110f;
   font-weight: 600;
-  box-shadow: var(--rcp-glow);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
 }
-.hero .actions .sl-link-button.primary:hover {
-  transform: translateY(-2px);
-  filter: brightness(1.06);
-  box-shadow: 0 0 0 1px rgba(23,230,195,0.3), 0 18px 48px -14px rgba(23,230,195,0.6);
-}
-.hero .actions .sl-link-button.secondary {
-  border: 1px solid color-mix(in srgb, var(--rcp-signal) 40%, transparent);
-  color: var(--sl-color-white);
-  background: transparent;
-  transition: background 0.16s ease, border-color 0.16s ease;
-}
-.hero .actions .sl-link-button.secondary:hover {
-  background: color-mix(in srgb, var(--rcp-signal) 10%, transparent);
-  border-color: var(--rcp-signal);
-}
-.hero .actions .sl-link-button.minimal { color: var(--sl-color-gray-2); }
-.hero .actions .sl-link-button.minimal:hover { color: var(--sl-color-accent-high); }
+.sidebar-content summary .group-label span { font-family: var(--__rcp-head); letter-spacing: 0.01em; }
 
-/* ============================================================================
-   Feature cards — sharper, with a top signal rule that lights on hover
-   ============================================================================ */
+/* On-this-page TOC current link */
+starlight-toc a[aria-current="true"] { color: var(--sl-color-accent-high); border-inline-start-color: var(--rcp-signal); }
+
+/* ================================================== Splash / landing ===== */
+/* Widen the splash content so the two-column hero has room to breathe, and
+   hide Starlight's auto page-title panel (our Hero renders its own <h1>). */
+.page:has(.rcp-hero) .main-pane { --sl-content-width: 68rem; }
+.page:has(.rcp-hero) .content-panel:first-of-type { display: none; }
+.page:has(.rcp-hero) .content-panel + .content-panel { border-top: 0; }
+.rcp-section { max-width: 68rem; margin-inline: auto; }
+
+.rcp-section { margin-block: clamp(3rem, 7vw, 5.5rem); }
+.rcp-section > h2:first-child {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  margin-top: 0;
+  padding-top: 0;
+  border: 0;
+}
+.rcp-section > h2:first-child::after {
+  content: "";
+  display: block;
+  width: 3rem; height: 3px;
+  margin-top: 0.7rem;
+  border-radius: 3px;
+  background: var(--rcp-gradient);
+}
+
+/* ============================================================ Cards ======= */
+.card-grid { gap: 1rem; }
 .card {
   position: relative;
   border: 1px solid var(--sl-color-gray-5);
-  background: color-mix(in srgb, var(--sl-color-gray-6) 60%, transparent);
-  border-radius: 12px;
+  background: color-mix(in srgb, var(--sl-color-gray-6) 55%, transparent);
+  border-radius: 13px;
+  padding: 1.4rem;
   overflow: hidden;
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 .card::before {
   content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
+  position: absolute; inset: 0 0 auto 0; height: 2px;
   background: var(--rcp-gradient);
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  transform: scaleX(0); transform-origin: left;
+  transition: transform 0.25s ease;
 }
 .card:hover {
   transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--rcp-signal) 45%, transparent);
-  box-shadow: var(--rcp-glow);
+  border-color: color-mix(in srgb, var(--rcp-signal) 42%, transparent);
+  background: color-mix(in srgb, var(--sl-color-gray-6) 80%, transparent);
+  box-shadow: 0 20px 50px -24px rgba(0,0,0,0.7);
 }
-.card:hover::before { opacity: 1; }
+.card:hover::before { transform: scaleX(1); }
 .card .icon {
   color: var(--rcp-signal);
   background: color-mix(in srgb, var(--rcp-signal) 12%, transparent);
-  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--rcp-signal) 22%, transparent);
+  border-radius: 9px;
+  padding: 0.4rem;
 }
+.card .title { font-family: var(--__rcp-head); font-weight: 600; }
 
 /* Link cards */
 .sl-link-card {
   border-color: var(--sl-color-gray-5);
-  transition: border-color 0.18s ease, background 0.18s ease;
+  border-radius: 11px;
+  box-shadow: none;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
 }
 .sl-link-card:hover {
   border-color: color-mix(in srgb, var(--rcp-signal) 50%, transparent);
-  background: color-mix(in srgb, var(--rcp-signal) 6%, transparent);
+  background: color-mix(in srgb, var(--rcp-signal) 7%, transparent);
+  transform: translateY(-2px);
 }
+.sl-link-card .icon { color: var(--rcp-signal); }
 
-/* ============================================================================
-   Markdown content polish
-   ============================================================================ */
+/* ================================================= Markdown content ====== */
 .sl-markdown-content a:not(:where(.not-content *)) {
   color: var(--sl-color-accent-high);
-  text-decoration-color: color-mix(in srgb, var(--rcp-signal) 50%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--rcp-signal) 45%, transparent);
   text-underline-offset: 3px;
 }
-.sl-markdown-content a:hover:not(:where(.not-content *)) {
-  text-decoration-color: var(--rcp-signal);
-}
+.sl-markdown-content a:hover:not(:where(.not-content *)) { text-decoration-color: var(--rcp-signal); }
 
-/* Inline code + tables get a technical tint */
-.sl-markdown-content :not(pre) > code {
-  background: color-mix(in srgb, var(--rcp-signal) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--rcp-signal) 22%, transparent);
-  color: var(--sl-color-accent-high);
-  border-radius: 5px;
-}
-.sl-markdown-content th {
-  background: color-mix(in srgb, var(--rcp-signal) 10%, transparent);
-  border-bottom: 2px solid color-mix(in srgb, var(--rcp-signal) 35%, transparent);
-}
-.sl-markdown-content blockquote {
-  border-inline-start-color: var(--rcp-signal);
-}
-
-/* Section headings get a subtle top rule (no colored tick — keeps it clean). */
-.sl-markdown-content h2 {
-  padding-top: 0.6em;
-  margin-top: 1.6em;
+/* Section headings: quiet top rule for rhythm, no gimmicks */
+.sl-markdown-content h2:not(.rcp-section h2) {
+  margin-top: 2.2em;
+  padding-top: 0.7em;
   border-top: 1px solid var(--sl-color-gray-5);
 }
 
-/* ============================================================================
-   Agent-stack widget (ACP / MCP / RCP)
-   ============================================================================ */
+/* Inline code */
+.sl-markdown-content :not(pre) > code {
+  background: var(--sl-color-bg-inline-code);
+  border: 1px solid color-mix(in srgb, var(--rcp-signal) 20%, transparent);
+  color: var(--sl-color-accent-high);
+  border-radius: 5px;
+  font-size: 0.86em;
+  padding: 0.12em 0.4em;
+}
+
+/* Code blocks (Expressive Code) */
+.expressive-code .frame {
+  border-radius: 12px;
+  box-shadow: 0 14px 40px -22px rgba(0,0,0,0.8);
+}
+.expressive-code .frame.has-title .header,
+.expressive-code .frame.is-terminal .header {
+  border-bottom: 1px solid color-mix(in srgb, var(--rcp-signal) 15%, transparent);
+}
+
+/* Tables */
+.sl-markdown-content table { border-collapse: separate; border-spacing: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--sl-color-gray-5); }
+.sl-markdown-content th {
+  background: color-mix(in srgb, var(--rcp-signal) 11%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--rcp-signal) 30%, transparent);
+  font-family: var(--__rcp-head);
+  font-weight: 600;
+}
+.sl-markdown-content th, .sl-markdown-content td { border-inline: 0; }
+.sl-markdown-content tr:nth-child(even) td { background: color-mix(in srgb, var(--sl-color-gray-6) 45%, transparent); }
+
+/* Blockquotes / asides */
+.sl-markdown-content blockquote { border-inline-start-color: var(--rcp-signal); }
+.starlight-aside--note { border-inline-start-color: var(--rcp-signal); background: color-mix(in srgb, var(--rcp-signal) 7%, transparent); }
+.starlight-aside--tip { border-inline-start-color: var(--rcp-signal-2); }
+
+/* ====================================== Agent-stack widget (home) ======== */
 .rcp-stack {
   display: grid;
   gap: 0.7rem;
-  max-width: 34rem;
-  margin: 2rem auto;
+  max-width: 38rem;
+  margin: 1.8rem 0 0;
 }
 .rcp-stack .layer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.3rem;
-  border-radius: 10px;
+  padding: 1.05rem 1.35rem;
+  border-radius: 11px;
   font-family: var(--__rcp-head);
   font-weight: 600;
-  letter-spacing: 0.01em;
   color: #fff;
   border: 1px solid transparent;
 }
-.rcp-stack .layer span {
-  font-family: var(--sl-font-mono);
-  font-weight: 400;
-  opacity: 0.9;
-  font-size: 0.85rem;
-}
-.rcp-stack .acp { background: linear-gradient(100deg, #1a3a52, #234b68); border-color: #2f6b8f; color: #bfe4ff; }
-.rcp-stack .mcp { background: linear-gradient(100deg, #2a2f2e, #3a423f); border-color: #4d5654; color: #cdd6d4; }
+.rcp-stack .layer span { font-family: var(--sl-font-mono); font-weight: 400; opacity: 0.9; font-size: 0.85rem; }
+.rcp-stack .acp { background: linear-gradient(100deg, #16303f, #1d4256); border-color: #2c5f7d; color: #bfe4ff; }
+.rcp-stack .mcp { background: linear-gradient(100deg, #232827, #333b39); border-color: #47504e; color: #ccd5d3; }
 .rcp-stack .rcp {
-  background: linear-gradient(100deg, #063e37, #0a5a4b);
+  background: linear-gradient(100deg, #063a33, #0a5546);
   border-color: var(--rcp-signal);
   color: var(--sl-color-accent-high);
   box-shadow: var(--rcp-glow);
 }
 
-/* ============================================================================
-   Hero badge
-   ============================================================================ */
+/* ================================================== Generic badge ======== */
 .rcp-badge {
   display: inline-block;
   padding: 0.35rem 0.9rem;
   border-radius: 999px;
   font-family: var(--sl-font-mono);
   font-size: 0.78rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   color: var(--sl-color-accent-high);
-  background: color-mix(in srgb, var(--rcp-signal) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--rcp-signal) 38%, transparent);
-  box-shadow: 0 0 24px -6px color-mix(in srgb, var(--rcp-signal) 60%, transparent);
+  background: color-mix(in srgb, var(--rcp-signal) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--rcp-signal) 34%, transparent);
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }

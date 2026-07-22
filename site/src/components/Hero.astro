@@ -1,0 +1,234 @@
+---
+// Custom landing hero for RCP — two-column: pitch on the left, a live-looking
+// stdio protocol terminal on the right. Fully self-contained + scoped styles.
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+---
+
+<section class="rcp-hero">
+  <div class="rcp-hero__grid">
+    <div class="rcp-hero__copy">
+      <span class="rcp-eyebrow">
+        <span class="rcp-eyebrow__dot"></span>
+        RCP/1 · Stable · JSON-RPC 2.0
+      </span>
+
+      <h1 class="rcp-hero__title">
+        The <span class="rcp-grad">Retrieval</span><br />Context Protocol
+      </h1>
+
+      <p class="rcp-hero__lead">
+        One open protocol so <b>any</b> RAG engine — any language, any vendor —
+        can share its power with any client. The retrieval companion to
+        <b>MCP</b> and <b>ACP</b>.
+      </p>
+
+      <div class="rcp-hero__actions">
+        <a class="rcp-btn rcp-btn--primary" href={`${base}/reference/spec/`}>
+          Read the spec
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="rcp-btn rcp-btn--ghost" href={`${base}/start/quickstart/`}>Quickstart</a>
+        <a class="rcp-btn rcp-btn--bare" href="https://github.com/1ay1/rcp">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.5v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.7 18 5 18 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.6.8.5 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+          GitHub
+        </a>
+      </div>
+
+      <ul class="rcp-hero__meta">
+        <li>stdio + HTTP</li>
+        <li>Capability-negotiated</li>
+        <li>MIT licensed</li>
+      </ul>
+    </div>
+
+    <div class="rcp-term" aria-hidden="true">
+      <div class="rcp-term__bar">
+        <span class="rcp-term__dot"></span>
+        <span class="rcp-term__dot"></span>
+        <span class="rcp-term__dot"></span>
+        <span class="rcp-term__title">rcp · stdio</span>
+      </div>
+      <pre class="rcp-term__body"><code><span class="c-dim">// handshake</span>
+<span class="c-out">→</span> <span class="c-k">"method"</span>: <span class="c-m">"initialize"</span>, <span class="c-k">"params"</span>: {'{'}
+    <span class="c-k">"protocolVersion"</span>: <span class="c-n">1</span> {'}'}
+<span class="c-in">←</span> <span class="c-k">"capabilities"</span>: {'{'} <span class="c-k">"retrieve"</span>, <span class="c-k">"rerank"</span> {'}'}
+
+<span class="c-dim">// hybrid recall → rerank → MMR</span>
+<span class="c-out">→</span> <span class="c-k">"method"</span>: <span class="c-m">"retrieve"</span>, <span class="c-k">"params"</span>: {'{'}
+    <span class="c-k">"query"</span>: <span class="c-s">"transformer attention"</span>,
+    <span class="c-k">"mode"</span>: <span class="c-s">"hybrid"</span>, <span class="c-k">"k"</span>: <span class="c-n">5</span>,
+    <span class="c-k">"rerank"</span>: {'{'} <span class="c-k">"method"</span>: <span class="c-s">"colbert"</span> {'}'} {'}'}
+<span class="c-in">←</span> <span class="c-k">"progress"</span>: <span class="c-n">0.8</span>, <span class="c-k">"stage"</span>: <span class="c-s">"rerank"</span>
+<span class="c-in">←</span> <span class="c-k">"hits"</span>: [{'{'}
+    <span class="c-k">"id"</span>: <span class="c-s">"arxiv:1706.03762"</span>,
+    <span class="c-k">"score"</span>: <span class="c-n">0.94</span>,
+    <span class="c-k">"citation"</span>: <span class="c-s">"Attention Is All You Need"</span> {'}'}]</code></pre>
+    </div>
+  </div>
+</section>
+
+<style>
+  .rcp-hero {
+    margin-block: clamp(2rem, 5vw, 4.5rem) clamp(2.5rem, 5vw, 4rem);
+  }
+  .rcp-hero__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: clamp(2rem, 4vw, 3.5rem);
+    align-items: center;
+  }
+  @media (min-width: 60rem) {
+    .rcp-hero__grid { grid-template-columns: 1.05fr 0.95fr; }
+  }
+
+  /* ---- Left: copy ---- */
+  .rcp-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.32rem 0.8rem;
+    border-radius: 999px;
+    font-family: var(--sl-font-mono);
+    font-size: 0.76rem;
+    letter-spacing: 0.03em;
+    color: var(--sl-color-accent-high);
+    background: color-mix(in srgb, var(--rcp-signal) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--rcp-signal) 32%, transparent);
+  }
+  .rcp-eyebrow__dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--rcp-signal);
+    box-shadow: 0 0 10px 1px var(--rcp-signal);
+    animation: rcp-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes rcp-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  .rcp-hero__title {
+    font-family: var(--__rcp-head);
+    font-weight: 700;
+    font-size: clamp(2.5rem, 5.5vw, 4rem);
+    line-height: 1.03;
+    letter-spacing: -0.025em;
+    margin: 1.25rem 0 0;
+    color: var(--sl-color-white);
+  }
+  .rcp-grad {
+    background: var(--rcp-gradient-warm);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .rcp-hero__lead {
+    margin: 1.15rem 0 0;
+    max-width: 46ch;
+    font-size: clamp(1.02rem, 1.4vw, 1.18rem);
+    line-height: 1.6;
+    color: var(--sl-color-gray-2);
+  }
+  .rcp-hero__lead b { color: var(--sl-color-white); font-weight: 600; }
+
+  .rcp-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.7rem;
+    margin-top: 1.8rem;
+  }
+  .rcp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.62rem 1.15rem;
+    border-radius: 9px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .rcp-btn--primary {
+    color: #05100e;
+    background: var(--rcp-gradient);
+    box-shadow: 0 8px 30px -10px color-mix(in srgb, var(--rcp-signal) 80%, transparent);
+  }
+  .rcp-btn--primary:hover { transform: translateY(-2px); box-shadow: 0 14px 40px -10px color-mix(in srgb, var(--rcp-signal) 90%, transparent); }
+  .rcp-btn--ghost {
+    color: var(--sl-color-white);
+    border: 1px solid color-mix(in srgb, var(--rcp-signal) 38%, transparent);
+  }
+  .rcp-btn--ghost:hover { background: color-mix(in srgb, var(--rcp-signal) 10%, transparent); border-color: var(--rcp-signal); }
+  .rcp-btn--bare { color: var(--sl-color-gray-2); padding-inline: 0.6rem; }
+  .rcp-btn--bare:hover { color: var(--sl-color-accent-high); }
+
+  .rcp-hero__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.4rem;
+    margin: 1.8rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--sl-font-mono);
+    font-size: 0.8rem;
+    color: var(--sl-color-gray-3);
+  }
+  .rcp-hero__meta li { position: relative; padding-left: 1.1rem; }
+  .rcp-hero__meta li::before {
+    content: "";
+    position: absolute; left: 0; top: 50%;
+    width: 6px; height: 6px; margin-top: -3px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--rcp-signal) 70%, transparent);
+  }
+
+  /* ---- Right: terminal ---- */
+  .rcp-term {
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 14px;
+    overflow: hidden;
+    background: color-mix(in srgb, #05100e 55%, var(--sl-color-black));
+    box-shadow: 0 30px 80px -30px rgba(0,0,0,0.8), 0 0 0 1px color-mix(in srgb, var(--rcp-signal) 8%, transparent);
+    position: relative;
+  }
+  .rcp-term::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(120% 80% at 100% 0%, color-mix(in srgb, var(--rcp-signal) 14%, transparent), transparent 55%);
+    pointer-events: none;
+  }
+  .rcp-term__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    background: color-mix(in srgb, var(--sl-color-gray-6) 70%, transparent);
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+  .rcp-term__dot { width: 11px; height: 11px; border-radius: 50%; background: var(--sl-color-gray-4); }
+  .rcp-term__dot:nth-child(1) { background: #ff5f57; }
+  .rcp-term__dot:nth-child(2) { background: #febc2e; }
+  .rcp-term__dot:nth-child(3) { background: #28c840; }
+  .rcp-term__title {
+    margin-left: auto;
+    font-family: var(--sl-font-mono);
+    font-size: 0.75rem;
+    color: var(--sl-color-gray-3);
+  }
+  .rcp-term__body {
+    margin: 0;
+    padding: 1.1rem 1.25rem;
+    overflow-x: auto;
+    font-family: var(--sl-font-mono);
+    font-size: 0.82rem;
+    line-height: 1.7;
+    background: transparent;
+    tab-size: 2;
+  }
+  .rcp-term__body code { font-family: inherit; background: none; border: none; padding: 0; color: var(--sl-color-gray-2); }
+  .c-dim  { color: var(--sl-color-gray-4); font-style: italic; }
+  .c-k    { color: var(--rcp-signal); }
+  .c-s    { color: #9be7a8; }
+  .c-n    { color: var(--rcp-amber); }
+  .c-m    { color: #a7ffee; font-weight: 600; }
+  .c-out  { color: var(--rcp-amber); font-weight: 700; }
+  .c-in   { color: var(--rcp-signal); font-weight: 700; }
+</style>
