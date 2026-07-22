@@ -175,7 +175,14 @@ def main():
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(PAGE.format(toc=toc_html(toc), body=body))
-    print(f"wrote {OUT}  ({len(toc)} sections)")
+    # Mirror the canonical schema into docs/ so GitHub Pages (which serves only
+    # from /docs) can resolve the schema URL. /schema remains the source of truth.
+    import shutil
+    schema_src = os.path.join(ROOT, "schema", "rcp-1.0.json")
+    schema_dst = os.path.join(ROOT, "docs", "schema", "rcp-1.0.json")
+    os.makedirs(os.path.dirname(schema_dst), exist_ok=True)
+    shutil.copyfile(schema_src, schema_dst)
+    print(f"wrote {OUT}  ({len(toc)} sections); mirrored schema -> docs/schema/")
 
 
 if __name__ == "__main__":
