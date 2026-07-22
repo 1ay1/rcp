@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://1ay1.github.io/rcp/schema/rcp-1.0.json",
+  "$id": "https://raw.githubusercontent.com/1ay1/rcp/main/schema/rcp-1.0.json",
   "title": "Retrieval Context Protocol 1.0",
   "description": "Normative JSON Schema for all RCP/1 message shapes (SOTA-complete).",
   "$defs": {

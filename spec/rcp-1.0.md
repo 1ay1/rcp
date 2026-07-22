@@ -4,8 +4,8 @@
 **Status:** Stable
 **Date:** 2026
 **Editors:** RCP Working Group
-**This document:** <https://1ay1.github.io/rcp/spec/rcp-1.0.html>
-**Latest version:** <https://1ay1.github.io/rcp/spec/>
+**This document:** <https://rcp-6d6ef6d5.mintlify.site/reference/specification>
+**Latest version:** <https://rcp-6d6ef6d5.mintlify.site/>
 **Normative schema:** [`/schema/rcp-1.0.json`](../schema/rcp-1.0.json)
 
 > The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHALL NOT**,

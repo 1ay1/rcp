@@ -16,6 +16,7 @@ keywords = ["rcp", "rag", "retrieval", "protocol", "json-rpc", "mcp", "acp"]
 packages = ["rcp"]
 
 [project.urls]
-Homepage = "https://1ay1.github.io/rcp/"
+Homepage = "https://rcp-6d6ef6d5.mintlify.site/"
+Documentation = "https://rcp-6d6ef6d5.mintlify.site/"
 Specification = "https://github.com/1ay1/rcp/blob/main/spec/rcp-1.0.md"
 Source = "https://github.com/1ay1/rcp"

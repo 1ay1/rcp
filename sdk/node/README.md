@@ -1,6 +1,6 @@
 # rcp — Retrieval Context Protocol, Node.js SDK
 
-A **native, zero-dependency** Node.js SDK for [RCP](https://1ay1.github.io/rcp/) —
+A **native, zero-dependency** Node.js SDK for [RCP](https://rcp-6d6ef6d5.mintlify.site/) —
 the open, versioned JSON-RPC protocol that lets any RAG engine expose
 `embed` / `rerank` / `retrieve` / `graph` / `index` / `catalog`, and any client
 consume it uniformly.
