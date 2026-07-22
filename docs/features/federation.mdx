@@ -11,7 +11,7 @@ a single `rcp.json` registry.
 
 | Model | Use it when | API |
 |-------|-------------|-----|
-| **Selector** | you have several backends and want to pick **one** — by id, by required capability, or by priority with liveness fallback (lazy connect) | `Selector.load("rcp.json").select_primary()` |
+| **Selector** | you have several backends and each query should hit **exactly one** — pick it by id, by required capability, or by priority with liveness fallback (lazy connect) | `Selector.load("rcp.json").select_capable(cap)` |
 | **Federation** | you want to query **all** reachable engines concurrently and fuse the ranked lists with Reciprocal Rank Fusion (origin-tagged hits) | `Federation::from_registry_file("rcp.json")` |
 
 ## The registry — `rcp.json`
@@ -47,26 +47,70 @@ Discovery composes with the [`catalog`](/methods/catalog) capability: a registry
 entry can point at an aggregator that enumerates further engines via
 `catalog/list`.
 
-## Selector — pick one
+## Selector — pick one of many
 
-Connects **lazily** and, on priority selection, falls back to the next live
-engine if the primary fails its connect + handshake. This makes a multi-backend
-deployment resilient without the client writing any failover glue.
+When you have several backends but each query should hit **exactly one**, a
+`Selector` chooses it for you from the `rcp.json` registry. It connects
+**lazily** — listing ten candidates opens **zero** connections until you call a
+`select_*` method, and then only to the winner. There are three selection
+policies:
+
+| Method | Picks | On failure |
+|--------|-------|------------|
+| `select(id)` | the one engine with that **id** | returns an error naming the unknown id |
+| `select_primary()` | the **highest-priority** engine that answers | walks down the priority order to the next live engine |
+| `select_capable(cap)` | the highest-priority live engine that **advertises `cap`** | skips engines that answer but lack the capability, and dead ones, until one qualifies |
+
+Both `select_primary` and `select_capable` give you **priority + liveness
+fallback for free**: a multi-backend deployment stays up when a backend dies,
+without the client writing any failover glue. `priority` in the registry (higher
+wins) sets the order they're tried.
 
 <CodeGroup>
 ```python Python
 sel = rcp.Selector.load("rcp.json")
+
+c = sel.select("docs")                            # a specific engine by id
+c = sel.select_primary()                          # highest-priority live engine
 c = sel.select_capable(rcp.Capability.Retrieve)   # highest-priority live engine that can retrieve
+
 for h in c.retrieve("query", k=5):
     print(h["id"], h["score"])
 ```
 
 ```js Node.js
 const sel = rcp.Selector.load("rcp.json");
-const c = await sel.selectCapable(rcp.Capability.Retrieve);
-for (const h of await c.retrieve("query", 5)) console.log(h.id, h.score);
+
+const c1 = await sel.select("docs");                            // by id
+const c2 = await sel.selectPrimary();                          // highest-priority live
+const c3 = await sel.selectCapable(rcp.Capability.Retrieve);   // highest-priority live + can retrieve
+
+for (const h of await c3.retrieve("query", 5)) console.log(h.id, h.score);
+```
+
+```rust Rust
+let sel = rcp::Selector::load("rcp.json")?;
+
+let c = sel.select("docs")?;                          // by id
+let c = sel.select_primary()?;                        // highest-priority live
+let c = sel.select_capable(rcp::Capability::Retrieve)?; // highest-priority live + can retrieve
+```
+
+```cpp C++
+auto sel = rcp::Selector::from_registry_file("rcp.json").value();
+
+auto c = sel.select("docs");                             // by id
+auto c = sel.select_primary();                           // highest-priority live
+auto c = sel.select_capable(rcp::Capability::Retrieve);  // highest-priority live + can retrieve
+// each returns Result<Client>: .value() is the connected client, .error() the failure
 ```
 </CodeGroup>
+
+<Tip>
+Use `select_capable` as the default in a mixed fleet: it is the "any live backend
+that can do X, best one first" query, so a client never has to hard-code which
+engine owns which capability.
+</Tip>
 
 ## Federation — fuse many
 
