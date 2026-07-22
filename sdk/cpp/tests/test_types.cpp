@@ -59,11 +59,35 @@ int main() {
 
     // Capabilities JSON round-trip preserves presence semantics.
     Capabilities caps;
-    caps.with_embed(Dimension{384}, "bge").with_retrieve(200, {"hybrid"});
+    caps.with_embed(Dimension{384}, "bge", {"text"})
+        .with_retrieve(200, {"dense", "sparse", "hybrid"}, {"text", "image"})
+        .with_multi(Dimension{128}, "colpali", "dot", {"image"})
+        .with_log();
     auto back = Capabilities::from_json(caps.to_json());
     CHECK(back.has(Capability::Embed));
     CHECK(back.has(Capability::Retrieve));
+    CHECK(back.has(Capability::MultiVector));
     CHECK(!back.has(Capability::Graph));
+    // Object-form flags survive the round-trip (spec §6 presence ⇒ supported).
+    CHECK(caps.to_json()["log"].is_object());
+    CHECK(back.log_);
+    // Modalities threaded through builders.
+    CHECK(caps.to_json()["multiVector"]["modalities"][0] == "image");
+
+    // Hit parses multimodal + provenance fields (§4.8 / §15.2).
+    Hit h = Hit::from_json(Json{{"id", "p3"}, {"score", 0.9}, {"modality", "image"},
+                                {"trust", {{"level", "untrusted"}, {"score", 0.2}}},
+                                {"content", Json::array({Json{{"type", "image"}, {"mimeType", "image/png"}}})}});
+    CHECK(h.modality == "image");
+    CHECK(h.trust["level"] == "untrusted");
+    CHECK(h.content.is_array());
+
+    // log notification helper is well-formed (§17.1).
+    auto logline = make_log_notification("info", "reranked 100→30", Json{{"latencyMs", 42}});
+    auto logj = Json::parse(logline);
+    CHECK(logj["method"] == "log");
+    CHECK(logj["params"]["level"] == "info");
+    CHECK(!logj.contains("id")); // notification, not a request
 
     // Server dispatch: pre-initialize call is NotInitialized; after init, an
     // unadvertised capability is CapabilityMissing; unknown method is UnknownMethod.
@@ -82,6 +106,17 @@ int main() {
 
     auto unk = srv.handle(Json{{"jsonrpc", "2.0"}, {"id", 5}, {"method", "nope"}, {"params", {}}});
     CHECK(unk["error"]["code"] == errc::UnknownMethod);
+
+    // ping is answerable any time and echoes the nonce (§7.15).
+    auto pong = srv.handle(Json{{"jsonrpc", "2.0"}, {"id", 6}, {"method", "ping"}, {"params", {{"nonce", 77}}}});
+    CHECK(pong["result"]["nonce"] == 77);
+
+    // notifications/cancel yields no reply object (§7.14).
+    auto cancel = srv.handle(Json{{"jsonrpc", "2.0"}, {"method", "notifications/cancel"}, {"params", {{"id", 3}}}});
+    CHECK(cancel.is_null());
+
+    // Cancelled error code exists in the RCP range.
+    CHECK(errc::Cancelled == -32006);
 
     if (g_fail == 0) std::printf("all type + runtime checks passed\n");
     return g_fail == 0 ? 0 : 1;

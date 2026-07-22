@@ -35,6 +35,7 @@
 <a class="toc-3" href="#45-notifications">4.5 Notifications</a>
 <a class="toc-3" href="#46-data-types">4.6 Data types</a>
 <a class="toc-3" href="#47-identifiers-concurrency-limits">4.7 Identifiers, concurrency &amp; limits</a>
+<a class="toc-3" href="#48-content-modality">4.8 Content &amp; modality</a>
 <a class="toc-2" href="#5-transports">5. Transports</a>
 <a class="toc-3" href="#51-stdio-recommended-default">5.1 stdio (RECOMMENDED default)</a>
 <a class="toc-3" href="#52-http">5.2 HTTP</a>
@@ -67,17 +68,34 @@
 <a class="toc-3" href="#122-retryability">12.2 Retryability</a>
 <a class="toc-2" href="#13-session-lifecycle">13. Session Lifecycle</a>
 <a class="toc-2" href="#14-conformance">14. Conformance</a>
+<a class="toc-3" href="#141-level-l0-base-required-of-every-server">14.1 Level L0 — Base (REQUIRED of every server)</a>
+<a class="toc-3" href="#142-level-l1-retrieval-recommended">14.2 Level L1 — Retrieval (RECOMMENDED)</a>
+<a class="toc-3" href="#143-level-l2-sota-optional">14.3 Level L2 — SOTA (OPTIONAL)</a>
+<a class="toc-3" href="#144-client-conformance">14.4 Client conformance</a>
 <a class="toc-2" href="#15-security-considerations">15. Security Considerations</a>
+<a class="toc-3" href="#151-trust-boundaries">15.1 Trust boundaries</a>
+<a class="toc-3" href="#152-indirect-prompt-injection-the-primary-rag-threat">15.2 Indirect prompt injection (the primary RAG threat)</a>
+<a class="toc-3" href="#153-corpus-index-poisoning">15.3 Corpus / index poisoning</a>
+<a class="toc-3" href="#154-injection-into-the-backing-query-engine">15.4 Injection into the backing query engine</a>
+<a class="toc-3" href="#155-resource-exhaustion-denial-of-service">15.5 Resource exhaustion &amp; denial of service</a>
+<a class="toc-3" href="#156-data-protection-privacy">15.6 Data protection &amp; privacy</a>
+<a class="toc-3" href="#157-supply-chain-versioning">15.7 Supply chain &amp; versioning</a>
 <a class="toc-2" href="#16-federation-querying-every-reachable-engine">16. Federation — querying every reachable engine</a>
 <a class="toc-3" href="#161-discovery">16.1 Discovery</a>
 <a class="toc-3" href="#162-fan-out">16.2 Fan-out</a>
 <a class="toc-3" href="#163-fusion">16.3 Fusion</a>
 <a class="toc-3" href="#164-federated-capabilities">16.4 Federated capabilities</a>
+<a class="toc-2" href="#17-observability">17. Observability</a>
+<a class="toc-3" href="#171-log-notifications">17.1 Log notifications</a>
+<a class="toc-3" href="#172-usage-telemetry">17.2 Usage &amp; telemetry</a>
 <a class="toc-2" href="#appendix-a-versioning-policy">Appendix A — Versioning Policy</a>
 <a class="toc-2" href="#appendix-b-mapping-sota-techniques-to-rcp">Appendix B — Mapping SOTA techniques to RCP</a>
 <a class="toc-2" href="#appendix-c-relationship-to-mcp-and-acp">Appendix C — Relationship to MCP and ACP</a>
 <a class="toc-2" href="#appendix-d-a-worked-session">Appendix D — A worked session</a>
 <a class="toc-2" href="#appendix-e-change-log">Appendix E — Change log</a>
+<a class="toc-2" href="#appendix-f-evaluation-quality">Appendix F — Evaluation &amp; quality</a>
+<a class="toc-2" href="#appendix-g-glossary">Appendix G — Glossary</a>
+<a class="toc-2" href="#appendix-h-normative-references">Appendix H — Normative references</a>
   </nav>
   <main class="spec-content">
     <h1 id="retrieval-context-protocol-specification">Retrieval Context Protocol — Specification</h1>
@@ -85,7 +103,7 @@
 <blockquote>The key words <strong>MUST</strong>, <strong>MUST NOT</strong>, <strong>REQUIRED</strong>, <strong>SHALL</strong>, <strong>SHALL NOT</strong>, <strong>SHOULD</strong>, <strong>SHOULD NOT</strong>, <strong>RECOMMENDED</strong>, <strong>MAY</strong>, and <strong>OPTIONAL</strong> in this document are to be interpreted as described in <a href="https://www.rfc-editor.org/rfc/rfc2119">RFC 2119</a> and <a href="https://www.rfc-editor.org/rfc/rfc8174">RFC 8174</a> when, and only when, they appear in all capitals, as shown here.</blockquote>
 <p>---</p>
 <h2 id="table-of-contents">Table of Contents</h2>
-<ul><li><a href="#abstract">Abstract</a></li><li><a href="#1-goals--non-goals">1. Goals &amp; Non-Goals</a></li><li><a href="#2-roles">2. Roles</a></li><li><a href="#3-the-retrieval-pipeline-model">3. The retrieval pipeline model</a></li><li><a href="#4-message-format">4. Message Format</a> — requests, <code>_meta</code>, notifications, <a href="#46-data-types">data types</a>, <a href="#47-identifiers-concurrency--limits">identifiers, concurrency &amp; limits</a></li><li><a href="#5-transports">5. Transports</a> — <a href="#51-stdio-recommended-default">stdio</a>, <a href="#52-http">HTTP</a>, <a href="#53-compatibility-envelope">compatibility envelope</a></li><li><a href="#6-capabilities">6. Capabilities</a> — <a href="#61-retrieve-capability-metadata"><code>retrieve</code> metadata</a>, <a href="#62-extension--registration-policy">extension &amp; registration policy</a></li><li><a href="#7-methods">7. Methods</a> — initialize, info, embed(×3), rerank, retrieve, transform, graph, index(×2), shutdown, catalog/list, cancel, ping</li><li><a href="#8-metadata-filtering">8. Metadata filtering</a></li><li><a href="#9-streaming--progress">9. Streaming &amp; progress</a></li><li><a href="#10-pagination">10. Pagination</a></li><li><a href="#11-batching">11. Batching</a></li><li><a href="#12-errors">12. Errors</a></li><li><a href="#13-session-lifecycle">13. Session Lifecycle</a></li><li><a href="#14-conformance">14. Conformance</a></li><li><a href="#15-security-considerations">15. Security Considerations</a></li><li><a href="#16-federation--querying-every-reachable-engine">16. Federation</a></li><li><a href="#appendix-a--versioning-policy">Appendix A — Versioning Policy</a></li><li><a href="#appendix-b--mapping-sota-retrieval-to-rcp">Appendix B — Mapping SOTA techniques to RCP</a></li><li><a href="#appendix-c--relationship-to-mcp-and-acp">Appendix C — Relationship to MCP and ACP</a></li><li><a href="#appendix-d--a-worked-session">Appendix D — A worked session</a></li><li><a href="#appendix-e--change-log">Appendix E — Change log</a></li></ul>
+<ul><li><a href="#abstract">Abstract</a></li><li><a href="#1-goals--non-goals">1. Goals &amp; Non-Goals</a></li><li><a href="#2-roles">2. Roles</a></li><li><a href="#3-the-retrieval-pipeline-model">3. The retrieval pipeline model</a></li><li><a href="#4-message-format">4. Message Format</a> — requests, <code>_meta</code>, notifications, <a href="#46-data-types">data types</a>, <a href="#47-identifiers-concurrency--limits">identifiers, concurrency &amp; limits</a>, <a href="#48-content--modality">content &amp; modality</a></li><li><a href="#5-transports">5. Transports</a> — <a href="#51-stdio-recommended-default">stdio</a>, <a href="#52-http">HTTP</a>, <a href="#53-compatibility-envelope">compatibility envelope</a></li><li><a href="#6-capabilities">6. Capabilities</a> — <a href="#61-retrieve-capability-metadata"><code>retrieve</code> metadata</a>, <a href="#62-extension--registration-policy">extension &amp; registration policy</a></li><li><a href="#7-methods">7. Methods</a> — initialize, info, embed(×3), rerank, <a href="#77-retrieve--gated-by-retrieve-the-workhorse">retrieve</a> + <a href="#771-determinism--reproducibility">determinism</a>, transform, graph, index(×2), catalog/list, cancel, ping, shutdown</li><li><a href="#8-metadata-filtering">8. Metadata filtering</a></li><li><a href="#9-streaming--progress">9. Streaming &amp; progress</a></li><li><a href="#10-pagination">10. Pagination</a></li><li><a href="#11-batching">11. Batching</a></li><li><a href="#12-errors">12. Errors</a> — <a href="#121-errordata"><code>error.data</code></a>, <a href="#122-retryability">retryability</a></li><li><a href="#13-session-lifecycle">13. Session Lifecycle</a></li><li><a href="#14-conformance">14. Conformance</a> — L0 / L1 / L2 levels</li><li><a href="#15-security-considerations">15. Security Considerations</a> — trust boundaries, prompt injection, poisoning, DoS, privacy</li><li><a href="#16-federation--querying-every-reachable-engine">16. Federation</a></li><li><a href="#17-observability">17. Observability</a> — log notifications, telemetry</li><li><a href="#appendix-a--versioning-policy">Appendix A — Versioning Policy</a></li><li><a href="#appendix-b--mapping-sota-retrieval-to-rcp">Appendix B — Mapping SOTA techniques to RCP</a></li><li><a href="#appendix-c--relationship-to-mcp-and-acp">Appendix C — Relationship to MCP and ACP</a></li><li><a href="#appendix-d--a-worked-session">Appendix D — A worked session</a></li><li><a href="#appendix-e--change-log">Appendix E — Change log</a></li><li><a href="#appendix-f--evaluation--quality">Appendix F — Evaluation &amp; quality</a></li><li><a href="#appendix-g--glossary">Appendix G — Glossary</a></li><li><a href="#appendix-h--normative-references">Appendix H — Normative references</a></li></ul>
 <p>---</p>
 <h2 id="abstract">Abstract</h2>
 <p>The <strong>Retrieval Context Protocol (RCP)</strong> is an open, transport-agnostic, JSON-RPC 2.0 protocol that standardises how a <em>client</em> (an application, an agent runtime, an IDE) obtains retrieval context from a <em>server</em> (a RAG engine, a vector database, a search service, a knowledge graph).</p>
@@ -171,15 +189,34 @@
 <p><strong>Request <code>id</code>.</strong> The <code>id</code> <strong>MUST</strong> be unique among a client&#x27;s in-flight requests on a connection. A client <strong>MAY</strong> reuse an <code>id</code> value only after it has received the response bearing that <code>id</code>. Servers <strong>MUST</strong> echo the request <code>id</code> unchanged (same JSON type and value) in the response. <code>id</code> <strong>MUST NOT</strong> be <code>null</code> on a request (a <code>null</code> id denotes a response to an unparseable request, per JSON-RPC).</p>
 <p><strong>Concurrency &amp; ordering.</strong> A client <strong>MAY</strong> have multiple requests in flight on one connection (pipelining). A server <strong>MAY</strong> answer them in any order; clients <strong>MUST</strong> correlate responses by <code>id</code>, not by arrival order. A server <strong>MAY</strong> process requests concurrently. <code>initialize</code> is the exception: a client <strong>MUST NOT</strong> send any other request until it has received the <code>initialize</code> response.</p>
 <p><strong>Message size &amp; limits.</strong> RCP sets no hard message-size limit, but servers <strong>SHOULD</strong> advertise and enforce operational bounds — <code>retrieve.maxK</code>, <code>rerank.maxCandidates</code>, <code>embed.batchLimit</code> — and reject requests that exceed them with <code>-32602</code> (<code>InvalidParams</code>), or shed load with <code>-32011</code> (<code>RateLimited</code>). Clients <strong>SHOULD</strong> treat these advertised bounds as authoritative and pre-clamp.</p>
+<h3 id="48-content-modality">4.8 Content &amp; modality</h3>
+<p>Retrieval is no longer text-only. Visual-document models (ColPali, ColQwen) embed rendered page images; audio and code have their own encoders. RCP models this with a <strong>Content block</strong> — a tagged union used wherever a query, a passage, or an indexed document body appears:</p>
+<pre class="code" data-lang="json"><code>{ &quot;type&quot;: &quot;text&quot;,  &quot;text&quot;: &quot;attention is all you need&quot; }
+{ &quot;type&quot;: &quot;image&quot;, &quot;mimeType&quot;: &quot;image/png&quot;, &quot;data&quot;: &quot;&lt;base64&gt;&quot; }
+{ &quot;type&quot;: &quot;image&quot;, &quot;mimeType&quot;: &quot;image/png&quot;, &quot;uri&quot;: &quot;https://…/page-3.png&quot; }
+{ &quot;type&quot;: &quot;blob&quot;,  &quot;mimeType&quot;: &quot;audio/wav&quot;, &quot;uri&quot;: &quot;file:///clip.wav&quot; }</code></pre>
+<ul><li><code>type</code> is <code>&quot;text&quot;</code>, <code>&quot;image&quot;</code>, <code>&quot;audio&quot;</code>, or <code>&quot;blob&quot;</code>. A block carries its</li></ul>
+<p>  payload inline as base64 <code>data</code> <strong>or</strong> by reference as <code>uri</code> (never both); a   <code>text</code> block uses <code>text</code>. <code>mimeType</code> is <strong>REQUIRED</strong> for non-text blocks.</p>
+<ul><li>A <strong>modality</strong> is the coarse kind of content: <code>&quot;text&quot;</code>, <code>&quot;image&quot;</code>, <code>&quot;audio&quot;</code>,</li></ul>
+<p>  <code>&quot;code&quot;</code>, or <code>&quot;multimodal&quot;</code>. A server advertises the modalities it accepts per   capability (e.g. <code>embed.modalities</code>, <code>retrieve.modalities</code>); the default,   when unadvertised, is <code>[&quot;text&quot;]</code>.</p>
+<ul><li><strong>Backward compatibility.</strong> Everywhere this spec accepts a <code>query</code> or</li></ul>
+<p>  <code>passages</code>/<code>texts</code> <strong>string</strong>, a server that advertises a non-text modality   <strong>MUST</strong> also accept a Content block (or array of blocks) in the same field, and   a text-only server <strong>MAY</strong> accept only the string form. A bare string is   exactly equivalent to <code>{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;…&quot;}</code>. This keeps the common   text path terse while making multimodality first-class.</p>
+<ul><li>Servers <strong>MUST</strong> reject a block whose <code>type</code>/<code>mimeType</code> is outside the modalities</li></ul>
+<p>  they advertised with <code>-32005</code> (<code>OptionUnsupported</code>), and <strong>MUST</strong> treat a <code>uri</code>   they will not or cannot fetch as <code>-32602</code> rather than silently ignoring it.</p>
 <p>---</p>
 <h2 id="5-transports">5. Transports</h2>
 <p>A message is byte-identical across transports; only framing differs.</p>
 <h3 id="51-stdio-recommended-default">5.1 stdio (RECOMMENDED default)</h3>
-<ul><li>The client launches the server as a subprocess.</li><li>Each JSON-RPC message is one compact (newline-free) JSON object terminated by</li></ul>
-<p>  <code>\n</code>, written to the server&#x27;s <strong>stdin</strong>; responses go to its <strong>stdout</strong>.</p>
-<ul><li><strong>stderr</strong> is reserved for human-readable logging; it <strong>MUST NOT</strong> carry</li></ul>
-<p>  protocol messages.</p>
-<ul><li>EOF on stdin is an implicit <code>shutdown</code>.</li></ul>
+<ul><li>The client launches the server as a subprocess and speaks JSON-RPC over the</li></ul>
+<p>  child&#x27;s <strong>stdin</strong> (client→server) and <strong>stdout</strong> (server→client).</p>
+<ul><li><strong>Framing</strong> is newline-delimited JSON (NDJSON): each message is exactly one</li></ul>
+<p>  JSON object serialised with <strong>no embedded newline</strong> (<code>\n</code>, U+000A) and   terminated by a single <code>\n</code>. Messages are UTF-8; a BOM <strong>MUST NOT</strong> be   emitted. Because JSON string escaping renders any literal newline as <code>\n</code>, a   compact <code>dump</code> is always single-line — no length-prefix framing is needed.</p>
+<ul><li>A reader <strong>MUST</strong> tolerate blank lines between messages (ignore them) and</li></ul>
+<p>  <strong>MUST NOT</strong> assume messages arrive one per <code>read()</code>; buffer until <code>\n</code>.</p>
+<ul><li><strong>stdout is protocol-only.</strong> A server <strong>MUST NOT</strong> write anything but framed</li></ul>
+<p>  JSON-RPC to stdout. <strong>stderr</strong> is reserved for human-readable diagnostics and   <strong>MUST NOT</strong> carry protocol messages; structured logs travel over <code>log</code>   notifications (§17), not stderr.</p>
+<ul><li>EOF on stdin is an implicit <code>shutdown</code>: the server <strong>SHOULD</strong> finish in-flight</li></ul>
+<p>  requests, flush their responses, and exit.</p>
 <h3 id="52-http">5.2 HTTP</h3>
 <ul><li>Each request is <code>POST &lt;base&gt;/&lt;method&gt;</code> (default base <code>/rcp</code>) with the JSON-RPC</li></ul>
 <p>  object as the body and <code>Content-Type: application/json</code>. The method in the URL   path <strong>MUST</strong> match the <code>method</code> in the body; on mismatch the server <strong>MUST</strong>   return <code>-32600</code>.</p>
@@ -202,7 +239,8 @@
 <p>---</p>
 <h2 id="6-capabilities">6. Capabilities</h2>
 <p>Capabilities follow <strong>presence ⇒ supported</strong>. A capability object&#x27;s <em>presence</em> means the method/feature is offered; its <em>value</em> carries metadata (which <strong>MAY</strong> be <code>{}</code>). Absence means unavailable; clients <strong>MUST NOT</strong> use it.</p>
-<table><thead><tr><th>Key</th><th>Value shape</th><th>Meaning</th></tr></thead><tbody><tr><td><code>embed</code></td><td><code>{ dimension:int, identity:str, batchLimit?:int, normalized?:bool }</code></td><td>Dense text→vector.</td></tr><tr><td><code>sparseEmbed</code></td><td><code>{ identity:str, vocabulary?:int }</code></td><td>Learned-sparse embedding (SPLADE): term→weight maps.</td></tr><tr><td><code>multiVector</code></td><td><code>{ dimension:int, identity:str }</code></td><td>Multi-vector / late-interaction (ColBERT) token matrices.</td></tr><tr><td><code>rerank</code></td><td><code>{ methods:[str], maxCandidates?:int }</code></td><td>Reranking; <code>methods</code> ⊆ <code>[&quot;cross-encoder&quot;,&quot;colbert&quot;,&quot;llm&quot;]</code>.</td></tr><tr><td><code>retrieve</code></td><td>see §6.1</td><td>Full query→hits retrieval.</td></tr><tr><td><code>transform</code></td><td><code>{ methods:[str] }</code></td><td>Query transformation; <code>methods</code> ⊆ <code>[&quot;rewrite&quot;,&quot;hyde&quot;,&quot;multi-query&quot;,&quot;decompose&quot;,&quot;step-back&quot;]</code>.</td></tr><tr><td><code>graph</code></td><td><code>{ ops:[str] }</code></td><td>Graph retrieval; ops ⊆ <code>[&quot;local&quot;,&quot;global&quot;,&quot;drift&quot;,&quot;communities&quot;,&quot;neighbors&quot;]</code>.</td></tr><tr><td><code>index</code></td><td><code>{ writable:bool, chunking?:bool, contextual?:bool }</code></td><td>Document add/delete; optional server-side chunking / contextual retrieval.</td></tr><tr><td><code>filter</code></td><td><code>{ fields:[str], operators?:[str] }</code></td><td>Metadata filtering support and the fields/operators allowed.</td></tr><tr><td><code>streaming</code></td><td><code>true</code></td><td>Server may emit <code>notifications/progress</code> and incremental hits.</td></tr><tr><td><code>pagination</code></td><td><code>true</code></td><td>List results support <code>cursor</code>/<code>nextCursor</code>.</td></tr><tr><td><code>citations</code></td><td><code>true</code></td><td>Hits carry <code>citation</code>/<code>attribution</code> fields.</td></tr><tr><td><code>catalog</code></td><td><code>{ engines:int }</code></td><td>Server is an <strong>aggregator/gateway</strong>: it federates downstream RCP engines and answers <code>catalog/list</code> (see §7.13, §16).</td></tr></tbody></table>
+<table><thead><tr><th>Key</th><th>Value shape</th><th>Meaning</th></tr></thead><tbody><tr><td><code>embed</code></td><td><code>{ dimension:int, identity:str, batchLimit?:int, normalized?:bool, modalities?:[str] }</code></td><td>Dense content→vector.</td></tr><tr><td><code>sparseEmbed</code></td><td><code>{ identity:str, vocabulary?:int }</code></td><td>Learned-sparse embedding (SPLADE): term→weight maps.</td></tr><tr><td><code>multiVector</code></td><td>`{ dimension:int, identity:str, similarity?:&quot;dot&quot;\</td><td>&quot;cosine&quot;, modalities?:[str] }`</td><td>Multi-vector / late-interaction (ColBERT, ColPali) matrices.</td></tr><tr><td><code>rerank</code></td><td><code>{ methods:[str], maxCandidates?:int, models?:[str] }</code></td><td>Reranking; <code>methods</code> ⊆ <code>[&quot;cross-encoder&quot;,&quot;colbert&quot;,&quot;llm&quot;]</code>.</td></tr><tr><td><code>retrieve</code></td><td>see §6.1</td><td>Full query→hits retrieval.</td></tr><tr><td><code>transform</code></td><td><code>{ methods:[str] }</code></td><td>Query transformation; <code>methods</code> ⊆ <code>[&quot;rewrite&quot;,&quot;hyde&quot;,&quot;multi-query&quot;,&quot;decompose&quot;,&quot;step-back&quot;]</code>.</td></tr><tr><td><code>graph</code></td><td><code>{ ops:[str] }</code></td><td>Graph retrieval; ops ⊆ <code>[&quot;local&quot;,&quot;global&quot;,&quot;drift&quot;,&quot;communities&quot;,&quot;neighbors&quot;]</code>.</td></tr><tr><td><code>index</code></td><td><code>{ writable:bool, chunking?:bool, contextual?:bool }</code></td><td>Document add/delete; optional server-side chunking / contextual retrieval.</td></tr><tr><td><code>filter</code></td><td>`{ fields:[str]\</td><td>object, operators?:[str] }`</td><td>Metadata filtering support and the fields/operators allowed.</td></tr><tr><td><code>streaming</code></td><td><code>{}</code></td><td>Server may emit <code>notifications/progress</code> and incremental hits.</td></tr><tr><td><code>pagination</code></td><td><code>{}</code></td><td>List results support <code>cursor</code>/<code>nextCursor</code>.</td></tr><tr><td><code>citations</code></td><td><code>{}</code></td><td>Hits carry <code>citation</code>/<code>trust</code> fields.</td></tr><tr><td><code>log</code></td><td><code>{ levels?:[str] }</code></td><td>Server emits <code>log</code> notifications (§17).</td></tr><tr><td><code>catalog</code></td><td><code>{ engines:int }</code></td><td>Server is an <strong>aggregator/gateway</strong>: it federates downstream RCP engines and answers <code>catalog/list</code> (see §7.13, §16).</td></tr></tbody></table>
+<p>Each capability&#x27;s value is an object (possibly <code>{}</code>); its <strong>presence</strong> is what signals support. A peer <strong>MUST</strong> treat an unknown capability key, or an unknown field inside a known capability, as informational and ignore it (§6.2).</p>
 <h3 id="61-retrieve-capability-metadata">6.1 <code>retrieve</code> capability metadata</h3>
 <pre class="code" data-lang="json"><code>{ &quot;retrieve&quot;: {
     &quot;maxK&quot;: 200,
@@ -250,8 +288,10 @@
 <p><strong>Params</strong> <code>{ &quot;texts&quot;: [string], &quot;kind&quot;?: &quot;query&quot;|&quot;document&quot; }</code> <strong>Result</strong> <code>{ &quot;sparse&quot;: [ { &quot;indices&quot;: [int], &quot;values&quot;: [float] } ] }</code></p>
 <p>Each entry is a sparse vector over the model vocabulary (SPLADE-style term weights). <code>indices</code> are vocabulary ids; <code>values</code> are the learned weights.</p>
 <h3 id="75-embedmulti-gated-by-multivector">7.5 <code>embed/multi</code> — gated by <code>multiVector</code></h3>
-<p><strong>Params</strong> <code>{ &quot;texts&quot;: [string], &quot;kind&quot;?: &quot;query&quot;|&quot;document&quot; }</code> <strong>Result</strong> <code>{ &quot;matrices&quot;: [ [[float]] ] }</code></p>
-<p>Each text yields a <strong>matrix</strong> of token embeddings (ColBERT). Clients score with MaxSim; servers <strong>SHOULD</strong> document tokenization so offsets align.</p>
+<p><strong>Params</strong> <code>{ &quot;inputs&quot;: [Content|string], &quot;kind&quot;?: &quot;query&quot;|&quot;document&quot; }</code> <strong>Result</strong> <code>{ &quot;matrices&quot;: [ [[float]] ], &quot;dimension&quot;: int }</code></p>
+<p>Each input yields a <strong>matrix</strong> of token- (ColBERT) or patch- (ColPali/ColQwen) level embeddings for <strong>late-interaction</strong> scoring. The relevance of a document <em>D</em> to a query <em>Q</em> is the <strong>MaxSim</strong> sum: for each query vector, take its maximum similarity against any document vector, then sum over query vectors:</p>
+<pre class="code" data-lang=""><code>MaxSim(Q, D) = Σ_{q ∈ Q}  max_{d ∈ D}  sim(q, d)          sim = dot or cosine</code></pre>
+<p>Clients score with MaxSim locally, or delegate via <code>rerank method:&quot;colbert&quot;</code>. Servers <strong>SHOULD</strong> advertise <code>multiVector.similarity</code> (<code>&quot;dot&quot;</code> or <code>&quot;cosine&quot;</code>) and, for text models, document tokenization so token offsets align with <code>chunk</code> boundaries. Visual-document servers advertise <code>multiVector.modalities:[&quot;image&quot;]</code> and accept rendered pages as <code>image</code> Content blocks (§4.8); each page yields one patch matrix.</p>
 <h3 id="76-rerank-gated-by-rerank">7.6 <code>rerank</code> — gated by <code>rerank</code></h3>
 <p><strong>Params</strong></p>
 <pre class="code" data-lang="json"><code>{ &quot;query&quot;: &quot;…&quot;,
@@ -263,12 +303,13 @@
 <h3 id="77-retrieve-gated-by-retrieve-the-workhorse">7.7 <code>retrieve</code> — gated by <code>retrieve</code>  <em>(the workhorse)</em></h3>
 <p>Runs the server&#x27;s retrieval pipeline and returns ranked hits. Every option beyond <code>query</code>/<code>k</code> is optional and <strong>MUST</strong> be ignored-or-rejected only per the advertised <code>retrieve</code> capability.</p>
 <p><strong>Params</strong></p>
-<pre class="code" data-lang="json"><code>{ &quot;query&quot;: &quot;string&quot;,
+<pre class="code" data-lang="json"><code>{ &quot;query&quot;: &quot;string&quot; | Content | [Content],
   &quot;k&quot;: 10,                          // final result count
   &quot;mode&quot;?: &quot;dense&quot;|&quot;sparse&quot;|&quot;hybrid&quot;,
+  &quot;modality&quot;?: &quot;text&quot;|&quot;image&quot;|&quot;audio&quot;|&quot;code&quot;|&quot;multimodal&quot;,  // default &quot;text&quot; (§4.8)
   &quot;candidateK&quot;?: 100,               // recall-stage candidate count before rerank
   &quot;fusion&quot;?: { &quot;method&quot;: &quot;rrf&quot;|&quot;weighted&quot;, &quot;weights&quot;?: {&quot;dense&quot;:0.5,&quot;sparse&quot;:0.5}, &quot;rrfK&quot;?: 60 },
-  &quot;rerank&quot;?: { &quot;method&quot;: &quot;cross-encoder&quot;|&quot;colbert&quot;|&quot;llm&quot;, &quot;topN&quot;?: 10 } | false,
+  &quot;rerank&quot;?: { &quot;method&quot;: &quot;cross-encoder&quot;|&quot;colbert&quot;|&quot;llm&quot;, &quot;model&quot;?: &quot;…&quot;, &quot;topN&quot;?: 10 } | false,
   &quot;mmr&quot;?: { &quot;lambda&quot;: 0.5 },        // diversification (0=max diversity,1=pure relevance)
   &quot;rewrite&quot;?: &quot;rewrite&quot;|&quot;hyde&quot;|&quot;multi-query&quot;|&quot;decompose&quot;|false,
   &quot;filter&quot;?: { … },                 // metadata filter, see §8
@@ -276,25 +317,39 @@
   &quot;recency&quot;?: { &quot;field&quot;: &quot;timestamp&quot;, &quot;halfLifeDays&quot;: 30 },
   &quot;includeText&quot;?: true,
   &quot;includeVectors&quot;?: false,
+  &quot;seed&quot;?: 12345,                   // determinism hint (§7.7.1)
+  &quot;indexVersion&quot;?: &quot;opaque&quot;,        // pin retrieval to a corpus snapshot (§7.7.1)
+  &quot;strict&quot;?: true,                  // reject vs. gracefully degrade unsupported options
   &quot;cursor&quot;?: &quot;opaque&quot;,              // pagination (if `pagination` advertised)
   &quot;_meta&quot;?: { &quot;progressToken&quot;: 1 }  // streaming (if `streaming` advertised)
 }</code></pre>
 <p><strong>Result</strong></p>
 <pre class="code" data-lang="json"><code>{ &quot;hits&quot;: [ Hit, … ],
   &quot;nextCursor&quot;?: &quot;opaque&quot;,
-  &quot;usage&quot;?: { &quot;candidates&quot;: 100, &quot;reranked&quot;: 30, &quot;latencyMs&quot;: 42 },
+  &quot;indexVersion&quot;?: &quot;opaque&quot;,        // the snapshot actually served
+  &quot;usage&quot;?: { &quot;candidates&quot;: 100, &quot;reranked&quot;: 30, &quot;latencyMs&quot;: 42, &quot;notes&quot;?: [&quot;…&quot;] },
   &quot;rewrittenQuery&quot;?: &quot;…&quot; }</code></pre>
 <p>The server <strong>MUST</strong> honour options only within its capabilities and <strong>SHOULD</strong> reflect what it actually did in <code>usage</code>. If a client requests an unsupported <code>mode</code>/<code>method</code>, the server <strong>MUST</strong> return <code>-32005</code> (<code>OptionUnsupported</code>) rather than silently degrade — unless the client set <code>&quot;strict&quot;: false</code>, in which case the server <strong>MAY</strong> fall back and note it in <code>usage.notes</code>.</p>
 <p><strong>Hit</strong></p>
 <pre class="code" data-lang="json"><code>{ &quot;id&quot;: string | number,
   &quot;score&quot;: float,
   &quot;text&quot;?: string,
+  &quot;content&quot;?: [Content],              // non-text or mixed bodies (§4.8), e.g. a page image
+  &quot;modality&quot;?: &quot;text&quot;|&quot;image&quot;|&quot;audio&quot;|&quot;code&quot;|&quot;multimodal&quot;,
   &quot;meta&quot;?: object,
   &quot;vector&quot;?: [float],                 // when includeVectors
   &quot;scores&quot;?: { &quot;dense&quot;: 0.7, &quot;sparse&quot;: 0.3, &quot;rerank&quot;: 0.9 },  // per-stage breakdown
-  &quot;citation&quot;?: { &quot;source&quot;: &quot;…&quot;, &quot;uri&quot;?: &quot;…&quot;, &quot;start&quot;?: int, &quot;end&quot;?: int },
+  &quot;citation&quot;?: { &quot;source&quot;: &quot;…&quot;, &quot;uri&quot;?: &quot;…&quot;, &quot;title&quot;?: &quot;…&quot;, &quot;start&quot;?: int, &quot;end&quot;?: int, &quot;page&quot;?: int },
+  &quot;trust&quot;?: { &quot;level&quot;: &quot;trusted&quot;|&quot;community&quot;|&quot;untrusted&quot;, &quot;score&quot;?: 0.0 },  // provenance (§15)
   &quot;chunk&quot;?: { &quot;docId&quot;: string, &quot;index&quot;: int, &quot;context&quot;?: string } }</code></pre>
-<p><code>id</code> is in the server&#x27;s identifier space; clients fusing across servers key on the stringified <code>id</code>. <code>scores</code> exposes the per-stage contribution for debugging/telemetry (SOTA pipelines want this).</p>
+<p><code>id</code> is in the server&#x27;s identifier space; clients fusing across servers key on the stringified <code>id</code>. <code>scores</code> exposes the per-stage contribution for debugging/telemetry (SOTA pipelines want this). <code>trust</code> carries <strong>provenance</strong> so a downstream LLM (or the client) can weight or quarantine untrusted content before it enters a prompt (§15). <code>content</code>/<code>modality</code> carry non-text bodies for visual-document and multimodal retrieval.</p>
+<h4 id="771-determinism-reproducibility">7.7.1 Determinism &amp; reproducibility</h4>
+<p>Retrieval quality work (evals, regression tests, A/Bs, audits) needs repeatability. RCP provides two optional handles:</p>
+<ul><li><strong><code>seed</code></strong> — a client-supplied integer that fixes any stochastic step (ANN</li></ul>
+<p>  exploration, MMR tie-breaking, LLM-based rerank sampling). A server that   honours <code>seed</code> <strong>MUST</strong> return identical results for identical   <code>(query, params, seed, indexVersion)</code>; one that cannot <strong>MUST</strong> ignore it   (never error) and <strong>SHOULD</strong> note non-determinism in <code>usage.notes</code>.</p>
+<ul><li><strong><code>indexVersion</code></strong> — an opaque token identifying a corpus snapshot. A server</li></ul>
+<p>  that supports snapshots echoes the served snapshot in the result and, when a   client pins a specific <code>indexVersion</code>, <strong>MUST</strong> either serve that snapshot or   fail with <code>-32010</code> (<code>BackendUnavailable</code>) if it has been garbage-collected —   never silently serve a different one. This lets a client reproduce a result   set even as the index changes underneath it.</p>
+<p>A server advertises support via <code>retrieve.deterministic: true</code> and/or <code>retrieve.snapshots: true</code>.</p>
 <h3 id="78-querytransform-gated-by-transform">7.8 <code>query/transform</code> — gated by <code>transform</code></h3>
 <p>Standalone query transformation for clients driving an agentic loop.</p>
 <p><strong>Params</strong> <code>{ &quot;query&quot;: &quot;…&quot;, &quot;method&quot;: &quot;rewrite&quot;|&quot;hyde&quot;|&quot;multi-query&quot;|&quot;decompose&quot;|&quot;step-back&quot;, &quot;n&quot;?: 3 }</code> <strong>Result</strong> <code>{ &quot;queries&quot;: [&quot;…&quot;, …], &quot;hypothetical&quot;?: &quot;…&quot; }</code></p>
@@ -380,28 +435,68 @@
 <p>A server <strong>MUST</strong> reject any non-<code>initialize</code>/<code>info</code> request before a successful <code>initialize</code> with <code>-32001</code>.</p>
 <p>---</p>
 <h2 id="14-conformance">14. Conformance</h2>
-<p>A <strong>minimal RCP/1 server</strong> <strong>MUST</strong>:</p>
-<ol><li>Answer <code>initialize</code> with negotiated <code>protocolVersion</code> ≥ 1, and <code>info</code> and</li></ol>
-<p>   <code>ping</code> at any time (including before <code>initialize</code>).</p>
-<ol><li>Advertise at least one of <code>embed</code>, <code>rerank</code>, <code>retrieve</code>, <code>graph</code>.</li><li>Reject pre-<code>initialize</code> requests (other than <code>info</code>/<code>ping</code>) with <code>-32001</code>.</li><li>Reject un-advertised capability methods with <code>-32003</code>, undefined methods with</li></ol>
+<p>RCP defines three named conformance levels. A server <strong>MUST</strong> state its level in <code>info</code>/<code>initialize</code> via <code>_meta.conformance</code> (<code>&quot;L0&quot;</code>, <code>&quot;L1&quot;</code>, or <code>&quot;L2&quot;</code>); clients use it as a coarse expectation, capabilities as the precise contract.</p>
+<h3 id="141-level-l0-base-required-of-every-server">14.1 Level L0 — Base (REQUIRED of every server)</h3>
+<p>An <strong>L0</strong> server <strong>MUST</strong>:</p>
+<ol><li>Answer <code>initialize</code> with negotiated <code>protocolVersion</code> ≥ 1, and answer <code>info</code></li></ol>
+<p>   and <code>ping</code> at any time (including before <code>initialize</code>), echoing any <code>ping</code>    <code>nonce</code>.</p>
+<ol><li>Advertise at least one retrieval capability (<code>embed</code>, <code>rerank</code>, <code>retrieve</code>,</li></ol>
+<p>   or <code>graph</code>).</p>
+<ol><li>Reject pre-<code>initialize</code> requests (other than <code>info</code>/<code>ping</code>) with <code>-32001</code>.</li><li>Reject un-advertised capability methods with <code>-32003</code>, undefined methods with</li></ol>
 <p>   <code>-32004</code>, and unsupported advertised-method options with <code>-32005</code>.</p>
 <ol><li>Return well-formed JSON-RPC 2.0 for every request; echo the request <code>id</code></li></ol>
-<p>   unchanged; validate params and return <code>-32602</code> on malformed input instead of    crashing.</p>
+<p>   unchanged (same type and value); validate params and return <code>-32602</code> on    malformed input instead of crashing.</p>
 <ol><li>Ignore any notification it does not understand, and treat</li></ol>
-<p>   <code>notifications/cancel</code> for an unknown <code>id</code> as a no-op.</p>
-<p>A <strong>SOTA RCP/1 server</strong> additionally <strong>SHOULD</strong> advertise and implement <code>retrieve</code> with <code>modes:[&quot;dense&quot;,&quot;sparse&quot;,&quot;hybrid&quot;]</code>, <code>rerank</code> with a cross-encoder and/or ColBERT method, <code>filter</code>, and <code>citations</code>, and <strong>MAY</strong> implement <code>transform</code>, <code>graph</code>, <code>multiVector</code>, <code>sparseEmbed</code>, <code>streaming</code>, and <code>pagination</code>.</p>
-<p>A <strong>conforming client</strong> <strong>MUST</strong> send <code>initialize</code> first, honour the negotiated version, never call an unadvertised method or pass an unadvertised option (unless <code>strict:false</code>), and tolerate unknown fields/<code>_meta</code>/capability keys.</p>
-<p>The JSON Schemas in <a href="../schema"><code>/schema</code></a> are normative for message shapes; the <a href="../conformance"><code>/conformance</code></a> suite validates any server.</p>
+<p>   <code>notifications/cancel</code> for an unknown/already-answered <code>id</code> as a no-op.</p>
+<ol><li>Tolerate unknown object fields, unknown capability keys, and <code>_meta</code></li></ol>
+<p>   (forward compatibility, §4.6/§6.2).</p>
+<h3 id="142-level-l1-retrieval-recommended">14.2 Level L1 — Retrieval (RECOMMENDED)</h3>
+<p>An <strong>L1</strong> server is L0 and additionally <strong>SHOULD</strong> implement <code>retrieve</code> with <code>modes:[&quot;dense&quot;,&quot;sparse&quot;,&quot;hybrid&quot;]</code>, support <code>filter</code> and <code>citations</code>, populate <code>Hit.score</code> consistently (higher = more relevant), and honour <code>k</code>/<code>minScore</code>. This is the target for a general-purpose RAG backend.</p>
+<h3 id="143-level-l2-sota-optional">14.3 Level L2 — SOTA (OPTIONAL)</h3>
+<p>An <strong>L2</strong> server is L1 and additionally <strong>SHOULD</strong> advertise and implement a selection of: <code>rerank</code> (cross-encoder and/or ColBERT), <code>multiVector</code> / late interaction (incl. visual-document <code>modalities:[&quot;image&quot;]</code>), <code>sparseEmbed</code>, <code>query/transform</code>, <code>graph</code>, <code>streaming</code>, <code>pagination</code>, <code>log</code>, and reproducibility (<code>retrieve.deterministic</code>/<code>snapshots</code>, §7.7.1). L2 is what lets a client drive a full hybrid → fuse → rerank → MMR pipeline through one connection.</p>
+<h3 id="144-client-conformance">14.4 Client conformance</h3>
+<p>A <strong>conforming client</strong> <strong>MUST</strong> send <code>initialize</code> first, honour the negotiated version, never call an unadvertised method or pass an unadvertised option (unless <code>strict:false</code>), correlate responses by <code>id</code> (§4.7), tolerate unknown fields/<code>_meta</code>/capability keys, and function correctly if it drops every <code>notifications/progress</code> and <code>log</code> notification.</p>
+<p>The JSON Schema in <a href="../schema"><code>/schema</code></a> is normative for message shapes; the <a href="../conformance"><code>/conformance</code></a> suite validates any server, in any language, over stdio or HTTP.</p>
 <p>---</p>
 <h2 id="15-security-considerations">15. Security Considerations</h2>
-<ul><li><strong>stdio</strong> servers run with the launcher&#x27;s privileges; treat server binaries as</li></ul>
-<p>  trusted code.</p>
-<ul><li><strong>HTTP</strong> servers <strong>SHOULD</strong> bind to loopback unless behind authenticated</li></ul>
-<p>  transport; RCP carries no auth of its own.</p>
-<ul><li>Servers <strong>MUST</strong> treat all <code>params</code> as untrusted, validate before use, and</li></ul>
-<p>  sanitise <code>filter</code> trees and <code>graph</code> ops that reach an underlying query engine   to prevent injection.</p>
-<ul><li>Servers <strong>SHOULD</strong> enforce <code>maxK</code>/<code>maxCandidates</code>/<code>batchLimit</code> and return</li></ul>
-<p>  <code>-32011</code> under load rather than exhausting resources.</p>
+<p>RCP moves <em>untrusted external content</em> toward an LLM&#x27;s context window, so its threat model is dominated by two concerns absent from ordinary RPC: <strong>indirect prompt injection</strong> (retrieved text is itself adversarial) and <strong>provenance / trust</strong> of what gets grounded. Implementers <strong>MUST</strong> treat retrieved content as untrusted data, never as instructions.</p>
+<h3 id="151-trust-boundaries">15.1 Trust boundaries</h3>
+<ul><li><strong>stdio</strong> servers run with the launcher&#x27;s privileges; a launched binary is</li></ul>
+<p>  <em>trusted code</em> — vet it as you would any dependency. The launcher <strong>SHOULD</strong>   pass least-privilege environment and working directory.</p>
+<ul><li><strong>HTTP</strong> servers <strong>SHOULD</strong> bind to loopback unless fronted by authenticated,</li></ul>
+<p>  encrypted transport (TLS). RCP defines no auth of its own (§5.2); deployments   layer <code>Authorization</code>, mTLS, or API keys at the transport and apply them   <em>before</em> <code>initialize</code>.</p>
+<ul><li>A <strong>client MUST NOT</strong> assume a server is honest about its <code>capabilities</code>: a</li></ul>
+<p>  malicious or buggy server can claim <code>citations</code> and fabricate <code>citation.uri</code>,   or claim <code>trust.level:&quot;trusted&quot;</code> for poisoned content. Capability claims are   hints for feature negotiation, not security guarantees.</p>
+<h3 id="152-indirect-prompt-injection-the-primary-rag-threat">15.2 Indirect prompt injection (the primary RAG threat)</h3>
+<p>Retrieved passages may contain text engineered to hijack a downstream LLM (“ignore previous instructions…”). RCP cannot neutralise this alone, but it is designed so a careful client can:</p>
+<ul><li>Servers <strong>SHOULD</strong> populate <code>Hit.trust</code> with real provenance and <strong>MUST NOT</strong></li></ul>
+<p>  label user-generated or web-scraped content <code>&quot;trusted&quot;</code>.</p>
+<ul><li>Clients <strong>SHOULD</strong> keep retrieved content in a <em>data</em> channel distinct from</li></ul>
+<p>  the instruction channel of any prompt they build, delimit it unambiguously,   and <strong>SHOULD</strong> down-weight or quarantine <code>trust.level:&quot;untrusted&quot;</code> hits.</p>
+<ul><li>Servers and clients <strong>MUST NOT</strong> interpret any field of a <code>retrieve</code> result</li></ul>
+<p>  (text, <code>meta</code>, <code>citation</code>) as an RCP control instruction. There is no   in-band mechanism by which retrieved content can change protocol behaviour.</p>
+<h3 id="153-corpus-index-poisoning">15.3 Corpus / index poisoning</h3>
+<p>An attacker who can write to the index (via <code>index/add</code> or an upstream feed) can plant documents crafted to rank highly for a target query and then inject or mislead. Mitigations: servers <strong>SHOULD</strong> authenticate and authorise <code>index/add</code> / <code>index/delete</code> independently of read access; <strong>SHOULD</strong> record provenance so tainted sources can be revoked; and <strong>MAY</strong> expose <code>indexVersion</code> (§7.7.1) so a client can pin a vetted snapshot and audit what changed.</p>
+<h3 id="154-injection-into-the-backing-query-engine">15.4 Injection into the backing query engine</h3>
+<p><code>filter</code> trees, <code>graph</code> ops, and <code>id</code>s flow into a real query engine (SQL, a vector DB filter DSL, a Cypher query). Servers <strong>MUST</strong> treat all <code>params</code> as untrusted, validate <code>filter</code> field names against the advertised set (§8), parameterise rather than string-concatenate, and reject unadvertised operators with <code>-32602</code>. A server <strong>MUST NOT</strong> evaluate client-supplied expressions as code.</p>
+<h3 id="155-resource-exhaustion-denial-of-service">15.5 Resource exhaustion &amp; denial of service</h3>
+<ul><li>Servers <strong>MUST</strong> enforce <code>maxK</code> / <code>maxCandidates</code> / <code>batchLimit</code> and</li></ul>
+<p>  <strong>SHOULD</strong> cap total request body size, embedding batch size, <code>hops</code> on   <code>graph</code>, and <code>candidateK</code>, returning <code>-32602</code> or shedding load with <code>-32011</code>.</p>
+<ul><li>Servers <strong>SHOULD</strong> apply per-client rate limiting and per-request deadlines,</li></ul>
+<p>  and <strong>SHOULD</strong> bound the fan-out of <code>query/transform</code> (e.g. <code>multi-query n</code>).</p>
+<ul><li>Clients <strong>MUST</strong> bound their own fan-out and set deadlines when federating</li></ul>
+<p>  (§16.2) so one slow engine cannot stall a query.</p>
+<ul><li>Fetching a Content <code>uri</code> (§4.8) is an SSRF vector: a server <strong>MUST</strong> restrict</li></ul>
+<p>  which schemes/hosts it will dereference and <strong>SHOULD</strong> default to refusing   <code>file://</code> and private-network URIs unless explicitly configured.</p>
+<h3 id="156-data-protection-privacy">15.6 Data protection &amp; privacy</h3>
+<ul><li>Queries and returned text may contain PII or secrets. Servers <strong>SHOULD NOT</strong></li></ul>
+<p>  log full query/response bodies by default and <strong>SHOULD</strong> support redaction.</p>
+<ul><li>Access control is a <em>server</em> responsibility: a multi-tenant server <strong>MUST</strong></li></ul>
+<p>  scope retrieval to the caller&#x27;s authorised corpus and <strong>MUST NOT</strong> leak one   tenant&#x27;s documents to another via shared <code>id</code> spaces or <code>catalog/list</code>.</p>
+<ul><li><code>catalog/list</code> and <code>info</code> reveal topology and capabilities; a server <strong>MAY</strong></li></ul>
+<p>  restrict them to authenticated callers.</p>
+<h3 id="157-supply-chain-versioning">15.7 Supply chain &amp; versioning</h3>
+<p>Pin server binaries and model identities (<code>embed.identity</code>); a silent model swap changes the embedding space and corrupts a client-side ANN index. Treat <code>indexVersion</code> and <code>embed.identity</code> as part of a reproducible retrieval configuration.</p>
 <p>---</p>
 <h2 id="16-federation-querying-every-reachable-engine">16. Federation — querying every reachable engine</h2>
 <p>RCP is point-to-point: one server answers for its own index. Querying <strong>all</strong> the engines you can reach is a <em>client</em> concern, layered on top of the core methods with no new server obligations. It has three parts: <strong>discovery</strong>, <strong>fan-out</strong>, and <strong>fusion</strong>.</p>
@@ -419,18 +514,40 @@
 <h3 id="163-fusion">16.3 Fusion</h3>
 <p>The client merges the per-engine ranked lists into one. The <strong>default and RECOMMENDED</strong> strategy is <strong>Reciprocal Rank Fusion (RRF)</strong>, which needs only ranks (not comparable scores) and so is robust across heterogeneous engines:</p>
 <pre class="code" data-lang=""><code>RRF(d) = Σ_engine  weight_engine / (rrfK + rank_engine(d))          rrfK default 60</code></pre>
-<p>where <code>rank_engine(d)</code> is the 1-based position of document <code>d</code> in that engine&#x27;s result list (engines that did not return <code>d</code> contribute nothing). The fused list is sorted by descending <code>RRF(d)</code> and truncated to <code>k</code>.</p>
-<p>Document identity across engines is the <strong>stringified <code>Hit.id</code></strong> (§7.7). Because <code>id</code> spaces differ between engines, a client <strong>MAY</strong> instead key on a content hash or <code>citation.uri</code> when engines are known to share a corpus; this is a client policy, not a protocol requirement. Alternatives to RRF (weighted score normalisation, a second-stage cross-encoder <code>rerank</code> over the union) are permitted; RRF is the interoperable default.</p>
+<p>where <code>rank_engine(d)</code> is the 1-based position of document <code>d</code> in that engine&#x27;s result list (engines that did not return <code>d</code> contribute nothing). The fused list is sorted by descending <code>RRF(d)</code> and truncated to <code>k</code>. The constant <code>rrfK</code> (conventionally 60, per Cormack et al. 2009) damps the influence of low ranks; larger values flatten the contribution curve.</p>
+<p><strong>Weighted score fusion</strong> is the alternative when engines expose <em>comparable</em> scores. Because raw scores from different scorers are not comparable, they <strong>MUST</strong> be normalised per engine first — min-max to <code>[0,1]</code> over that engine&#x27;s returned set is the RECOMMENDED normaliser:</p>
+<pre class="code" data-lang=""><code>norm_engine(d) = (score_engine(d) - min_engine) / (max_engine - min_engine)
+Fused(d)       = Σ_engine  weight_engine · norm_engine(d)</code></pre>
+<p>RRF is preferred by default precisely because it sidesteps this normalisation footgun. A client <strong>MAY</strong> also run a second-stage cross-encoder <code>rerank</code> over the union of candidates — the most accurate option when one engine offers <code>rerank</code>.</p>
+<p><strong>Tie-breaking.</strong> Ties in the fused score <strong>MUST</strong> be broken deterministically so fusion is reproducible: order by (1) higher fused score, then (2) higher summed weight, then (3) lexicographically smaller stringified <code>id</code>. This guarantees a total order independent of engine response arrival order.</p>
+<p><strong>Deduplication.</strong> Document identity across engines is the <strong>stringified <code>Hit.id</code></strong> (§7.7). Because <code>id</code> spaces differ between engines, a client <strong>MAY</strong> instead key on a content hash or <code>citation.uri</code> when engines are known to share a corpus; this is a client policy, not a protocol requirement. When two hits collapse to one identity, the fused hit <strong>SHOULD</strong> retain the richest body (longest <code>text</code> / most <code>content</code>) and merge <code>meta</code>.</p>
 <p>Each fused hit <strong>SHOULD</strong> carry its origin in <code>meta.engine</code> (the registry <code>id</code>) and <strong>MAY</strong> retain <code>meta.engineRank</code>/<code>meta.engineScore</code> for debugging.</p>
 <h3 id="164-federated-capabilities">16.4 Federated capabilities</h3>
 <p>A client&#x27;s <em>effective</em> capability set over a federation is the <strong>union</strong> of its engines&#x27; capabilities (it can <code>embed</code> if any engine can). Its <em>guaranteed</em> set is the <strong>intersection</strong>. A federated <code>retrieve</code> runs against the subset of engines advertising <code>retrieve</code>; a federated <code>graph</code> op runs against those advertising <code>graph</code> with that op. Reference SDKs expose both a per-engine handle and a <code>Federation</code> facade implementing this section.</p>
+<p>---</p>
+<h2 id="17-observability">17. Observability</h2>
+<p>Production retrieval needs to be debuggable and measurable. RCP exposes two non-intrusive channels; both are optional and never alter retrieval semantics.</p>
+<h3 id="171-log-notifications">17.1 Log notifications</h3>
+<p>A server that advertises <code>log</code> <strong>MAY</strong> emit <code>log</code> notifications (no <code>id</code>, no response) at any time:</p>
+<pre class="code" data-lang="json"><code>{ &quot;jsonrpc&quot;: &quot;2.0&quot;, &quot;method&quot;: &quot;log&quot;,
+  &quot;params&quot;: { &quot;level&quot;: &quot;info&quot;, &quot;message&quot;: &quot;reranked 100→30&quot;,
+              &quot;logger&quot;?: &quot;pipeline&quot;, &quot;data&quot;?: { &quot;latencyMs&quot;: 42 },
+              &quot;_meta&quot;?: { &quot;progressToken&quot;: &quot;t2&quot; } } }</code></pre>
+<ul><li><code>level</code> is a syslog-style severity: <code>&quot;debug&quot;</code>, <code>&quot;info&quot;</code>, <code>&quot;notice&quot;</code>,</li></ul>
+<p>  <code>&quot;warning&quot;</code>, <code>&quot;error&quot;</code>. A client <strong>MAY</strong> advertise a minimum level in   <code>initialize.params</code> (<code>_meta.logLevel</code>); servers <strong>SHOULD</strong> honour it.</p>
+<ul><li>Logs are diagnostics only. A client <strong>MUST</strong> function correctly if it drops</li></ul>
+<p>  every <code>log</code> notification, and <strong>MUST NOT</strong> parse log text for control flow.</p>
+<ul><li>Over stdio, logs travel as <code>log</code> notifications on stdout — <em>not</em> on stderr —</li></ul>
+<p>  so a supervising client sees them in-band and correlated with requests.</p>
+<h3 id="172-usage-telemetry">17.2 Usage &amp; telemetry</h3>
+<p>The <code>usage</code> object on a <code>retrieve</code>/<code>rerank</code>/<code>graph</code> result (§7.7) carries per-request telemetry (<code>candidates</code>, <code>reranked</code>, <code>latencyMs</code>, <code>notes</code>). Servers <strong>SHOULD</strong> populate it; clients <strong>SHOULD</strong> treat it as advisory. Trace correlation ids belong in <code>_meta</code> (e.g. <code>_meta.traceId</code>), never in a core field.</p>
 <p>---</p>
 <h2 id="appendix-a-versioning-policy">Appendix A — Versioning Policy</h2>
 <ul><li>The major version (<code>RCP/N</code>) increments only on a breaking wire change.</li><li>Additive changes (new optional methods, capability keys, fields, <code>_meta</code>) are</li></ul>
 <p>  made within a major version and discovered via capabilities.</p>
 <ul><li>The negotiated version governs a session for its whole lifetime.</li></ul>
 <h2 id="appendix-b-mapping-sota-techniques-to-rcp">Appendix B — Mapping SOTA techniques to RCP</h2>
-<table><thead><tr><th>Technique</th><th>RCP surface</th></tr></thead><tbody><tr><td>BM25 / lexical</td><td><code>retrieve mode:&quot;sparse&quot;</code></td></tr><tr><td>Dense bi-encoder (e5/BGE/GTE)</td><td><code>retrieve mode:&quot;dense&quot;</code>, or <code>embed</code> for client-side ANN</td></tr><tr><td>Learned-sparse (SPLADE)</td><td><code>sparseEmbed</code> + <code>retrieve mode:&quot;sparse&quot;</code></td></tr><tr><td>Hybrid + RRF</td><td><code>retrieve mode:&quot;hybrid&quot;, fusion:{method:&quot;rrf&quot;}</code></td></tr><tr><td>Cross-encoder rerank</td><td><code>rerank method:&quot;cross-encoder&quot;</code> or <code>retrieve.rerank</code></td></tr><tr><td>Late interaction (ColBERT)</td><td><code>multiVector</code> + <code>rerank method:&quot;colbert&quot;</code></td></tr><tr><td>MMR diversification</td><td><code>retrieve.mmr</code></td></tr><tr><td>Query rewrite / HyDE / multi-query</td><td><code>query/transform</code> or <code>retrieve.rewrite</code></td></tr><tr><td>Multi-hop / agentic</td><td>client loop over <code>query/transform</code> + <code>retrieve</code> + <code>graph:&quot;drift&quot;</code></td></tr><tr><td>GraphRAG local/global</td><td>`graph op:&quot;local&quot;</td><td>&quot;global&quot;`</td></tr><tr><td>Contextual retrieval (Anthropic)</td><td><code>index/add contextual:true</code></td></tr><tr><td>Citations / attribution</td><td><code>citations</code> capability, <code>Hit.citation</code></td></tr><tr><td>Freshness / recency bias</td><td><code>retrieve.recency</code></td></tr><tr><td>Metadata filtering</td><td><code>filter</code> capability, <code>retrieve.filter</code></td></tr></tbody></table>
+<table><thead><tr><th>Technique</th><th>RCP surface</th></tr></thead><tbody><tr><td>BM25 / lexical</td><td><code>retrieve mode:&quot;sparse&quot;</code></td></tr><tr><td>Dense bi-encoder (e5/BGE/GTE)</td><td><code>retrieve mode:&quot;dense&quot;</code>, or <code>embed</code> for client-side ANN</td></tr><tr><td>Learned-sparse (SPLADE)</td><td><code>sparseEmbed</code> + <code>retrieve mode:&quot;sparse&quot;</code></td></tr><tr><td>Hybrid + RRF</td><td><code>retrieve mode:&quot;hybrid&quot;, fusion:{method:&quot;rrf&quot;}</code></td></tr><tr><td>Cross-encoder rerank</td><td><code>rerank method:&quot;cross-encoder&quot;</code> or <code>retrieve.rerank</code></td></tr><tr><td>Late interaction (ColBERT)</td><td><code>multiVector</code> + <code>rerank method:&quot;colbert&quot;</code></td></tr><tr><td>Visual-document retrieval (ColPali/ColQwen)</td><td><code>multiVector modalities:[&quot;image&quot;]</code>, <code>retrieve modality:&quot;image&quot;</code>, <code>image</code> Content blocks</td></tr><tr><td>Multimodal / cross-modal retrieval</td><td><code>retrieve modality:&quot;multimodal&quot;</code>, Content blocks (§4.8)</td></tr><tr><td>Sparse late interaction (SPLATE)</td><td><code>sparseEmbed</code> candidate-gen + <code>rerank method:&quot;colbert&quot;</code></td></tr><tr><td>Matryoshka / truncatable embeddings</td><td><code>embed.dimension</code> advertised; client truncates</td></tr><tr><td>MMR diversification</td><td><code>retrieve.mmr</code></td></tr><tr><td>Query rewrite / HyDE / multi-query</td><td><code>query/transform</code> or <code>retrieve.rewrite</code></td></tr><tr><td>Step-back prompting</td><td><code>query/transform method:&quot;step-back&quot;</code></td></tr><tr><td>Multi-hop / agentic</td><td>client loop over <code>query/transform</code> + <code>retrieve</code> + <code>graph:&quot;drift&quot;</code></td></tr><tr><td>GraphRAG local/global</td><td>`graph op:&quot;local&quot;\</td><td>&quot;global&quot;`</td></tr><tr><td>Contextual retrieval (Anthropic)</td><td><code>index/add contextual:true</code></td></tr><tr><td>Citations / attribution</td><td><code>citations</code> capability, <code>Hit.citation</code></td></tr><tr><td>Provenance / trust weighting</td><td><code>Hit.trust</code> (§15.2)</td></tr><tr><td>Freshness / recency bias</td><td><code>retrieve.recency</code></td></tr><tr><td>Metadata filtering</td><td><code>filter</code> capability, <code>retrieve.filter</code></td></tr><tr><td>Reproducible eval / regression tests</td><td><code>retrieve.seed</code>, <code>retrieve.indexVersion</code> (§7.7.1), Appendix F</td></tr><tr><td>Multi-backend fan-out + fusion</td><td>Federation (§16), RRF / weighted (§16.3)</td></tr></tbody></table>
 <h2 id="appendix-c-relationship-to-mcp-and-acp">Appendix C — Relationship to MCP and ACP</h2>
 <p>An agent runtime speaks <strong>ACP</strong> to its client, calls tools via <strong>MCP</strong>, and fetches grounding context via <strong>RCP</strong>. The three share JSON-RPC framing, the <code>initialize</code>/capabilities handshake, <code>_meta</code> extensibility, and cursor-based pagination, so an implementer of one is immediately productive in another.</p>
 <h2 id="appendix-d-a-worked-session">Appendix D — A worked session</h2>
@@ -461,7 +578,18 @@
 <pre class="code" data-lang="json"><code>→ {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:4,&quot;method&quot;:&quot;shutdown&quot;,&quot;params&quot;:{}}
 ← {&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:4,&quot;result&quot;:{}}</code></pre>
 <h2 id="appendix-e-change-log">Appendix E — Change log</h2>
-<table><thead><tr><th>Version</th><th>Date</th><th>Changes</th></tr></thead><tbody><tr><td><code>RCP/1</code> 1.0</td><td>2025</td><td>Initial stable release. Core methods (<code>initialize</code>, <code>info</code>, <code>embed</code>, <code>embed/sparse</code>, <code>embed/multi</code>, <code>rerank</code>, <code>retrieve</code>, <code>query/transform</code>, <code>graph</code>, <code>index/add</code>, <code>index/delete</code>, <code>catalog/list</code>, <code>shutdown</code>, <code>notifications/cancel</code>, <code>ping</code>), capability negotiation, stdio + HTTP(+SSE) transports, metadata filtering, streaming/progress, pagination, batching, structured errors with retryability, federation (registry + RRF fusion), and the type-theoretic C++ SDK with Python bindings.</td></tr></tbody></table>
+<table><thead><tr><th>Version</th><th>Date</th><th>Changes</th></tr></thead><tbody><tr><td><code>RCP/1</code> 1.0</td><td>2025</td><td>Initial stable release. Core methods (<code>initialize</code>, <code>info</code>, <code>embed</code>, <code>embed/sparse</code>, <code>embed/multi</code>, <code>rerank</code>, <code>retrieve</code>, <code>query/transform</code>, <code>graph</code>, <code>index/add</code>, <code>index/delete</code>, <code>catalog/list</code>, <code>shutdown</code>, <code>notifications/cancel</code>, <code>ping</code>), capability negotiation, stdio + HTTP(+SSE) transports, a Content/modality model for multimodal &amp; visual-document retrieval, metadata filtering, streaming/progress, <code>log</code> observability, pagination, batching, structured errors with retryability, determinism (<code>seed</code>/<code>indexVersion</code>), a full threat model, federation (registry + RRF/weighted fusion), and the type-theoretic C++ SDK with Python bindings.</td></tr></tbody></table>
+<h2 id="appendix-f-evaluation-quality">Appendix F — Evaluation &amp; quality</h2>
+<p>RCP is a transport, not a ranker, but it is designed so retrieval <em>quality</em> can be measured and compared across engines. Because a <code>retrieve</code> result is a ranked list of <code>Hit</code>s with stable <code>id</code>s, standard IR metrics apply directly. Given a query with graded relevance judgements, common measures are:</p>
+<ul><li><strong>Recall@k</strong> — fraction of all relevant documents present in the top <code>k</code>.</li><li><strong>MRR</strong> — mean reciprocal rank of the first relevant hit: <code>mean(1/rank_first)</code>.</li><li><strong>nDCG@k</strong> — <code>DCG@k / IDCG@k</code>, <code>DCG@k = Σ_{i=1..k} rel_i / log2(i+1)</code>; rewards</li></ul>
+<p>  putting highly-relevant hits near the top.</p>
+<ul><li><strong>MAP</strong> — mean average precision across queries.</li></ul>
+<p>Reproducible evaluation relies on §7.7.1: fix <code>seed</code> and pin <code>indexVersion</code> so a benchmark is repeatable, and read <code>usage.candidates</code>/<code>usage.reranked</code> to attribute quality to each pipeline stage. A conformance-plus test harness <strong>SHOULD</strong> report nDCG@10 and Recall@50 on a held-out set when comparing engines behind the same RCP surface. Metric computation is intentionally client-side: any engine that speaks RCP can be dropped into the same harness without change.</p>
+<h2 id="appendix-g-glossary">Appendix G — Glossary</h2>
+<table><thead><tr><th>Term</th><th>Meaning</th></tr></thead><tbody><tr><td><strong>Bi-encoder</strong></td><td>Encodes query and document independently into one vector each; fast, approximate (dense retrieval).</td></tr><tr><td><strong>Cross-encoder</strong></td><td>Jointly encodes a (query, document) pair for one relevance score; accurate, used for reranking.</td></tr><tr><td><strong>Late interaction</strong></td><td>Multi-vector scoring (MaxSim) that approximates cross-encoder accuracy at bi-encoder speed (ColBERT, ColPali).</td></tr><tr><td><strong>Learned-sparse</strong></td><td>A sparse term→weight vector produced by a model (SPLADE), searchable with an inverted index.</td></tr><tr><td><strong>Dense / sparse / hybrid</strong></td><td>Retrieval over dense vectors / lexical or learned-sparse terms / a fusion of both.</td></tr><tr><td><strong>RRF</strong></td><td>Reciprocal Rank Fusion — rank-only list merging robust to incomparable scores (§16.3).</td></tr><tr><td><strong>MMR</strong></td><td>Maximal Marginal Relevance — re-ranks for relevance–diversity trade-off.</td></tr><tr><td><strong>HyDE</strong></td><td>Hypothetical Document Embeddings — embed an LLM-generated pseudo-answer as the query.</td></tr><tr><td><strong>GraphRAG</strong></td><td>Retrieval over a knowledge graph / community summaries (local, global, drift).</td></tr><tr><td><strong>Contextual retrieval</strong></td><td>Prepending chunk-situating context before embedding/indexing (Anthropic).</td></tr><tr><td><strong>Recall stage / rerank stage</strong></td><td>Cheap high-recall candidate generation, then expensive precise reranking.</td></tr><tr><td><strong>Aggregator</strong></td><td>A server that federates downstream engines and advertises <code>catalog</code>.</td></tr><tr><td><strong>Modality</strong></td><td>Coarse content kind: text, image, audio, code, multimodal (§4.8).</td></tr></tbody></table>
+<h2 id="appendix-h-normative-references">Appendix H — Normative references</h2>
+<ul><li><strong>[RFC 2119]</strong> Key words for use in RFCs to Indicate Requirement Levels.</li><li><strong>[RFC 8174]</strong> Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words.</li><li><strong>[RFC 3986]</strong> Uniform Resource Identifier (URI): Generic Syntax — for <code>uri</code> fields.</li><li><strong>[RFC 4648]</strong> The Base16, Base32, and Base64 Data Encodings — for inline <code>data</code>.</li><li><strong>[RFC 8259]</strong> The JavaScript Object Notation (JSON) Data Interchange Format.</li><li><strong>[JSON-RPC 2.0]</strong> JSON-RPC 2.0 Specification, &lt;https://www.jsonrpc.org/specification&gt;.</li><li><strong>[JSON Schema 2020-12]</strong> JSON Schema draft 2020-12 — the normative message schema at <a href="../schema/rcp-1.0.json"><code>/schema/rcp-1.0.json</code></a>.</li></ul>
+<p>Informative: Cormack et al., <em>Reciprocal Rank Fusion</em> (SIGIR 2009); Khattab &amp; Zaharia, <em>ColBERT</em> (SIGIR 2020); Formal et al., <em>SPLADE</em> (2021) and <em>SPLATE</em> (2024); Faysse et al., <em>ColPali</em> (2024).</p>
   </main>
 </div>
 </body>

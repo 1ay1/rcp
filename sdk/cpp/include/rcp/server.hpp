@@ -25,6 +25,17 @@
 
 namespace rcp {
 
+// Build a `log` notification (spec §17.1) for a server to emit on stdout. Level
+// is one of debug|info|notice|warning|error. Returns the compact JSON line
+// (caller appends the trailing newline and writes it to the protocol stream).
+[[nodiscard]] inline std::string make_log_notification(std::string_view level,
+                                                       std::string_view message,
+                                                       Json data = Json(nullptr)) {
+    Json p = Json{{"level", level}, {"message", message}};
+    if (!data.is_null()) p["data"] = std::move(data);
+    return Json{{"jsonrpc", "2.0"}, {"method", method::Log}, {"params", std::move(p)}}.dump();
+}
+
 // ── Handler concept ──────────────────────────────────────────────────────────
 // The required surface: identity + advertised capabilities.
 template <class H>

@@ -80,6 +80,18 @@
       <p>A conforming server needs one handshake method plus one retrieval
       capability. The reference server fits on a screen.</p>
     </div>
+    <div class="card">
+      <h3>Multimodal &amp; SOTA</h3>
+      <p>Late interaction (ColBERT), visual-document retrieval (ColPali/ColQwen),
+      SPLADE, hybrid + RRF, rerank cascades, MMR, GraphRAG — all first-class. A
+      Content/modality model carries text, image, audio and code.</p>
+    </div>
+    <div class="card">
+      <h3>Secure by design</h3>
+      <p>A real threat model: retrieved text is untrusted data, never
+      instructions. Provenance/<code>trust</code> on every hit, prompt-injection
+      and corpus-poisoning guidance, DoS bounds, and SSRF-safe URI fetching.</p>
+    </div>
   </div>
 </section>
 
@@ -124,9 +136,9 @@
       <tr><td><code>info</code></td><td>always</td><td>identity + caps, no state change</td></tr>
       <tr><td><code>embed</code></td><td><code>embed</code></td><td><code>{texts}</code> → <code>{vectors}</code></td></tr>
       <tr><td><code>embed/sparse</code></td><td><code>sparseEmbed</code></td><td><code>{texts}</code> → learned-sparse terms (SPLADE)</td></tr>
-      <tr><td><code>embed/multi</code></td><td><code>multiVector</code></td><td><code>{texts}</code> → per-token vectors (ColBERT)</td></tr>
+      <tr><td><code>embed/multi</code></td><td><code>multiVector</code></td><td><code>{inputs}</code> → late-interaction matrices (ColBERT / ColPali)</td></tr>
       <tr><td><code>rerank</code></td><td><code>rerank</code></td><td><code>{query,passages}</code> → <code>{scores}</code></td></tr>
-      <tr><td><code>retrieve</code></td><td><code>retrieve</code></td><td><code>{query,k,mode?,filter?,rerank?,mmr?}</code> → <code>{hits}</code></td></tr>
+      <tr><td><code>retrieve</code></td><td><code>retrieve</code></td><td><code>{query,k,mode?,modality?,filter?,rerank?,mmr?,seed?}</code> → <code>{hits}</code></td></tr>
       <tr><td><code>query/transform</code></td><td><code>transform</code></td><td><code>{query,op}</code> → expansions / HyDE / decomposition</td></tr>
       <tr><td><code>graph</code></td><td><code>graph</code></td><td><code>{op,…}</code> → GraphRAG local / global / drift</td></tr>
       <tr><td><code>index/add</code></td><td><code>index</code></td><td><code>{documents}</code> → <code>{ids}</code></td></tr>

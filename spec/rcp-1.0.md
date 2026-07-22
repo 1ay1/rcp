@@ -23,24 +23,28 @@
 - [1. Goals & Non-Goals](#1-goals--non-goals)
 - [2. Roles](#2-roles)
 - [3. The retrieval pipeline model](#3-the-retrieval-pipeline-model)
-- [4. Message Format](#4-message-format) — requests, `_meta`, notifications, [data types](#46-data-types), [identifiers, concurrency & limits](#47-identifiers-concurrency--limits)
+- [4. Message Format](#4-message-format) — requests, `_meta`, notifications, [data types](#46-data-types), [identifiers, concurrency & limits](#47-identifiers-concurrency--limits), [content & modality](#48-content--modality)
 - [5. Transports](#5-transports) — [stdio](#51-stdio-recommended-default), [HTTP](#52-http), [compatibility envelope](#53-compatibility-envelope)
 - [6. Capabilities](#6-capabilities) — [`retrieve` metadata](#61-retrieve-capability-metadata), [extension & registration policy](#62-extension--registration-policy)
-- [7. Methods](#7-methods) — initialize, info, embed(×3), rerank, retrieve, transform, graph, index(×2), shutdown, catalog/list, cancel, ping
+- [7. Methods](#7-methods) — initialize, info, embed(×3), rerank, [retrieve](#77-retrieve--gated-by-retrieve-the-workhorse) + [determinism](#771-determinism--reproducibility), transform, graph, index(×2), catalog/list, cancel, ping, shutdown
 - [8. Metadata filtering](#8-metadata-filtering)
 - [9. Streaming & progress](#9-streaming--progress)
 - [10. Pagination](#10-pagination)
 - [11. Batching](#11-batching)
-- [12. Errors](#12-errors)
+- [12. Errors](#12-errors) — [`error.data`](#121-errordata), [retryability](#122-retryability)
 - [13. Session Lifecycle](#13-session-lifecycle)
-- [14. Conformance](#14-conformance)
-- [15. Security Considerations](#15-security-considerations)
+- [14. Conformance](#14-conformance) — L0 / L1 / L2 levels
+- [15. Security Considerations](#15-security-considerations) — trust boundaries, prompt injection, poisoning, DoS, privacy
 - [16. Federation](#16-federation--querying-every-reachable-engine)
+- [17. Observability](#17-observability) — log notifications, telemetry
 - [Appendix A — Versioning Policy](#appendix-a--versioning-policy)
 - [Appendix B — Mapping SOTA techniques to RCP](#appendix-b--mapping-sota-retrieval-to-rcp)
 - [Appendix C — Relationship to MCP and ACP](#appendix-c--relationship-to-mcp-and-acp)
 - [Appendix D — A worked session](#appendix-d--a-worked-session)
 - [Appendix E — Change log](#appendix-e--change-log)
+- [Appendix F — Evaluation & quality](#appendix-f--evaluation--quality)
+- [Appendix G — Glossary](#appendix-g--glossary)
+- [Appendix H — Normative references](#appendix-h--normative-references)
 
 ---
 
@@ -236,6 +240,37 @@ NOT** send any other request until it has received the `initialize` response.
 with `-32602` (`InvalidParams`), or shed load with `-32011` (`RateLimited`).
 Clients **SHOULD** treat these advertised bounds as authoritative and pre-clamp.
 
+### 4.8 Content & modality
+
+Retrieval is no longer text-only. Visual-document models (ColPali, ColQwen) embed
+rendered page images; audio and code have their own encoders. RCP models this
+with a **Content block** — a tagged union used wherever a query, a passage, or an
+indexed document body appears:
+
+```json
+{ "type": "text",  "text": "attention is all you need" }
+{ "type": "image", "mimeType": "image/png", "data": "<base64>" }
+{ "type": "image", "mimeType": "image/png", "uri": "https://…/page-3.png" }
+{ "type": "blob",  "mimeType": "audio/wav", "uri": "file:///clip.wav" }
+```
+
+- `type` is `"text"`, `"image"`, `"audio"`, or `"blob"`. A block carries its
+  payload inline as base64 `data` **or** by reference as `uri` (never both); a
+  `text` block uses `text`. `mimeType` is **REQUIRED** for non-text blocks.
+- A **modality** is the coarse kind of content: `"text"`, `"image"`, `"audio"`,
+  `"code"`, or `"multimodal"`. A server advertises the modalities it accepts per
+  capability (e.g. `embed.modalities`, `retrieve.modalities`); the default,
+  when unadvertised, is `["text"]`.
+- **Backward compatibility.** Everywhere this spec accepts a `query` or
+  `passages`/`texts` **string**, a server that advertises a non-text modality
+  **MUST** also accept a Content block (or array of blocks) in the same field, and
+  a text-only server **MAY** accept only the string form. A bare string is
+  exactly equivalent to `{"type":"text","text":"…"}`. This keeps the common
+  text path terse while making multimodality first-class.
+- Servers **MUST** reject a block whose `type`/`mimeType` is outside the modalities
+  they advertised with `-32005` (`OptionUnsupported`), and **MUST** treat a `uri`
+  they will not or cannot fetch as `-32602` rather than silently ignoring it.
+
 ---
 
 ## 5. Transports
@@ -244,12 +279,21 @@ A message is byte-identical across transports; only framing differs.
 
 ### 5.1 stdio (RECOMMENDED default)
 
-- The client launches the server as a subprocess.
-- Each JSON-RPC message is one compact (newline-free) JSON object terminated by
-  `\n`, written to the server's **stdin**; responses go to its **stdout**.
-- **stderr** is reserved for human-readable logging; it **MUST NOT** carry
-  protocol messages.
-- EOF on stdin is an implicit `shutdown`.
+- The client launches the server as a subprocess and speaks JSON-RPC over the
+  child's **stdin** (client→server) and **stdout** (server→client).
+- **Framing** is newline-delimited JSON (NDJSON): each message is exactly one
+  JSON object serialised with **no embedded newline** (`\n`, U+000A) and
+  terminated by a single `\n`. Messages are UTF-8; a BOM **MUST NOT** be
+  emitted. Because JSON string escaping renders any literal newline as `\n`, a
+  compact `dump` is always single-line — no length-prefix framing is needed.
+- A reader **MUST** tolerate blank lines between messages (ignore them) and
+  **MUST NOT** assume messages arrive one per `read()`; buffer until `\n`.
+- **stdout is protocol-only.** A server **MUST NOT** write anything but framed
+  JSON-RPC to stdout. **stderr** is reserved for human-readable diagnostics and
+  **MUST NOT** carry protocol messages; structured logs travel over `log`
+  notifications (§17), not stderr.
+- EOF on stdin is an implicit `shutdown`: the server **SHOULD** finish in-flight
+  requests, flush their responses, and exit.
 
 ### 5.2 HTTP
 
@@ -313,19 +357,24 @@ be `{}`). Absence means unavailable; clients **MUST NOT** use it.
 
 | Key | Value shape | Meaning |
 |-----|-------------|---------|
-| `embed` | `{ dimension:int, identity:str, batchLimit?:int, normalized?:bool }` | Dense text→vector. |
+| `embed` | `{ dimension:int, identity:str, batchLimit?:int, normalized?:bool, modalities?:[str] }` | Dense content→vector. |
 | `sparseEmbed` | `{ identity:str, vocabulary?:int }` | Learned-sparse embedding (SPLADE): term→weight maps. |
-| `multiVector` | `{ dimension:int, identity:str }` | Multi-vector / late-interaction (ColBERT) token matrices. |
-| `rerank` | `{ methods:[str], maxCandidates?:int }` | Reranking; `methods` ⊆ `["cross-encoder","colbert","llm"]`. |
+| `multiVector` | `{ dimension:int, identity:str, similarity?:"dot"\|"cosine", modalities?:[str] }` | Multi-vector / late-interaction (ColBERT, ColPali) matrices. |
+| `rerank` | `{ methods:[str], maxCandidates?:int, models?:[str] }` | Reranking; `methods` ⊆ `["cross-encoder","colbert","llm"]`. |
 | `retrieve` | see §6.1 | Full query→hits retrieval. |
 | `transform` | `{ methods:[str] }` | Query transformation; `methods` ⊆ `["rewrite","hyde","multi-query","decompose","step-back"]`. |
 | `graph` | `{ ops:[str] }` | Graph retrieval; ops ⊆ `["local","global","drift","communities","neighbors"]`. |
 | `index` | `{ writable:bool, chunking?:bool, contextual?:bool }` | Document add/delete; optional server-side chunking / contextual retrieval. |
-| `filter` | `{ fields:[str], operators?:[str] }` | Metadata filtering support and the fields/operators allowed. |
-| `streaming` | `true` | Server may emit `notifications/progress` and incremental hits. |
-| `pagination` | `true` | List results support `cursor`/`nextCursor`. |
-| `citations` | `true` | Hits carry `citation`/`attribution` fields. |
+| `filter` | `{ fields:[str]\|object, operators?:[str] }` | Metadata filtering support and the fields/operators allowed. |
+| `streaming` | `{}` | Server may emit `notifications/progress` and incremental hits. |
+| `pagination` | `{}` | List results support `cursor`/`nextCursor`. |
+| `citations` | `{}` | Hits carry `citation`/`trust` fields. |
+| `log` | `{ levels?:[str] }` | Server emits `log` notifications (§17). |
 | `catalog` | `{ engines:int }` | Server is an **aggregator/gateway**: it federates downstream RCP engines and answers `catalog/list` (see §7.13, §16). |
+
+Each capability's value is an object (possibly `{}`); its **presence** is what
+signals support. A peer **MUST** treat an unknown capability key, or an unknown
+field inside a known capability, as informational and ignore it (§6.2).
 
 ### 6.1 `retrieve` capability metadata
 
@@ -425,11 +474,24 @@ weights). `indices` are vocabulary ids; `values` are the learned weights.
 
 ### 7.5 `embed/multi` — gated by `multiVector`
 
-**Params** `{ "texts": [string], "kind"?: "query"|"document" }`
-**Result** `{ "matrices": [ [[float]] ] }`
+**Params** `{ "inputs": [Content|string], "kind"?: "query"|"document" }`
+**Result** `{ "matrices": [ [[float]] ], "dimension": int }`
 
-Each text yields a **matrix** of token embeddings (ColBERT). Clients score with
-MaxSim; servers **SHOULD** document tokenization so offsets align.
+Each input yields a **matrix** of token- (ColBERT) or patch- (ColPali/ColQwen)
+level embeddings for **late-interaction** scoring. The relevance of a document
+*D* to a query *Q* is the **MaxSim** sum: for each query vector, take its maximum
+similarity against any document vector, then sum over query vectors:
+
+```
+MaxSim(Q, D) = Σ_{q ∈ Q}  max_{d ∈ D}  sim(q, d)          sim = dot or cosine
+```
+
+Clients score with MaxSim locally, or delegate via `rerank method:"colbert"`.
+Servers **SHOULD** advertise `multiVector.similarity` (`"dot"` or `"cosine"`) and,
+for text models, document tokenization so token offsets align with `chunk`
+boundaries. Visual-document servers advertise `multiVector.modalities:["image"]`
+and accept rendered pages as `image` Content blocks (§4.8); each page yields one
+patch matrix.
 
 ### 7.6 `rerank` — gated by `rerank`
 
@@ -454,12 +516,13 @@ advertised `retrieve` capability.
 
 **Params**
 ```json
-{ "query": "string",
+{ "query": "string" | Content | [Content],
   "k": 10,                          // final result count
   "mode"?: "dense"|"sparse"|"hybrid",
+  "modality"?: "text"|"image"|"audio"|"code"|"multimodal",  // default "text" (§4.8)
   "candidateK"?: 100,               // recall-stage candidate count before rerank
   "fusion"?: { "method": "rrf"|"weighted", "weights"?: {"dense":0.5,"sparse":0.5}, "rrfK"?: 60 },
-  "rerank"?: { "method": "cross-encoder"|"colbert"|"llm", "topN"?: 10 } | false,
+  "rerank"?: { "method": "cross-encoder"|"colbert"|"llm", "model"?: "…", "topN"?: 10 } | false,
   "mmr"?: { "lambda": 0.5 },        // diversification (0=max diversity,1=pure relevance)
   "rewrite"?: "rewrite"|"hyde"|"multi-query"|"decompose"|false,
   "filter"?: { … },                 // metadata filter, see §8
@@ -467,6 +530,9 @@ advertised `retrieve` capability.
   "recency"?: { "field": "timestamp", "halfLifeDays": 30 },
   "includeText"?: true,
   "includeVectors"?: false,
+  "seed"?: 12345,                   // determinism hint (§7.7.1)
+  "indexVersion"?: "opaque",        // pin retrieval to a corpus snapshot (§7.7.1)
+  "strict"?: true,                  // reject vs. gracefully degrade unsupported options
   "cursor"?: "opaque",              // pagination (if `pagination` advertised)
   "_meta"?: { "progressToken": 1 }  // streaming (if `streaming` advertised)
 }
@@ -476,7 +542,8 @@ advertised `retrieve` capability.
 ```json
 { "hits": [ Hit, … ],
   "nextCursor"?: "opaque",
-  "usage"?: { "candidates": 100, "reranked": 30, "latencyMs": 42 },
+  "indexVersion"?: "opaque",        // the snapshot actually served
+  "usage"?: { "candidates": 100, "reranked": 30, "latencyMs": 42, "notes"?: ["…"] },
   "rewrittenQuery"?: "…" }
 ```
 
@@ -491,16 +558,42 @@ the server **MAY** fall back and note it in `usage.notes`.
 { "id": string | number,
   "score": float,
   "text"?: string,
+  "content"?: [Content],              // non-text or mixed bodies (§4.8), e.g. a page image
+  "modality"?: "text"|"image"|"audio"|"code"|"multimodal",
   "meta"?: object,
   "vector"?: [float],                 // when includeVectors
   "scores"?: { "dense": 0.7, "sparse": 0.3, "rerank": 0.9 },  // per-stage breakdown
-  "citation"?: { "source": "…", "uri"?: "…", "start"?: int, "end"?: int },
+  "citation"?: { "source": "…", "uri"?: "…", "title"?: "…", "start"?: int, "end"?: int, "page"?: int },
+  "trust"?: { "level": "trusted"|"community"|"untrusted", "score"?: 0.0 },  // provenance (§15)
   "chunk"?: { "docId": string, "index": int, "context"?: string } }
 ```
 
 `id` is in the server's identifier space; clients fusing across servers key on
 the stringified `id`. `scores` exposes the per-stage contribution for
-debugging/telemetry (SOTA pipelines want this).
+debugging/telemetry (SOTA pipelines want this). `trust` carries **provenance**
+so a downstream LLM (or the client) can weight or quarantine untrusted content
+before it enters a prompt (§15). `content`/`modality` carry non-text bodies for
+visual-document and multimodal retrieval.
+
+#### 7.7.1 Determinism & reproducibility
+
+Retrieval quality work (evals, regression tests, A/Bs, audits) needs
+repeatability. RCP provides two optional handles:
+
+- **`seed`** — a client-supplied integer that fixes any stochastic step (ANN
+  exploration, MMR tie-breaking, LLM-based rerank sampling). A server that
+  honours `seed` **MUST** return identical results for identical
+  `(query, params, seed, indexVersion)`; one that cannot **MUST** ignore it
+  (never error) and **SHOULD** note non-determinism in `usage.notes`.
+- **`indexVersion`** — an opaque token identifying a corpus snapshot. A server
+  that supports snapshots echoes the served snapshot in the result and, when a
+  client pins a specific `indexVersion`, **MUST** either serve that snapshot or
+  fail with `-32010` (`BackendUnavailable`) if it has been garbage-collected —
+  never silently serve a different one. This lets a client reproduce a result
+  set even as the index changes underneath it.
+
+A server advertises support via `retrieve.deterministic: true` and/or
+`retrieve.snapshots: true`.
 
 ### 7.8 `query/transform` — gated by `transform`
 
@@ -728,46 +821,144 @@ A server **MUST** reject any non-`initialize`/`info` request before a successful
 
 ## 14. Conformance
 
-A **minimal RCP/1 server** **MUST**:
+RCP defines three named conformance levels. A server **MUST** state its level in
+`info`/`initialize` via `_meta.conformance` (`"L0"`, `"L1"`, or `"L2"`); clients
+use it as a coarse expectation, capabilities as the precise contract.
 
-1. Answer `initialize` with negotiated `protocolVersion` ≥ 1, and `info` and
-   `ping` at any time (including before `initialize`).
-2. Advertise at least one of `embed`, `rerank`, `retrieve`, `graph`.
+### 14.1 Level L0 — Base (REQUIRED of every server)
+
+An **L0** server **MUST**:
+
+1. Answer `initialize` with negotiated `protocolVersion` ≥ 1, and answer `info`
+   and `ping` at any time (including before `initialize`), echoing any `ping`
+   `nonce`.
+2. Advertise at least one retrieval capability (`embed`, `rerank`, `retrieve`,
+   or `graph`).
 3. Reject pre-`initialize` requests (other than `info`/`ping`) with `-32001`.
 4. Reject un-advertised capability methods with `-32003`, undefined methods with
    `-32004`, and unsupported advertised-method options with `-32005`.
 5. Return well-formed JSON-RPC 2.0 for every request; echo the request `id`
-   unchanged; validate params and return `-32602` on malformed input instead of
-   crashing.
+   unchanged (same type and value); validate params and return `-32602` on
+   malformed input instead of crashing.
 6. Ignore any notification it does not understand, and treat
-   `notifications/cancel` for an unknown `id` as a no-op.
+   `notifications/cancel` for an unknown/already-answered `id` as a no-op.
+7. Tolerate unknown object fields, unknown capability keys, and `_meta`
+   (forward compatibility, §4.6/§6.2).
 
-A **SOTA RCP/1 server** additionally **SHOULD** advertise and implement
-`retrieve` with `modes:["dense","sparse","hybrid"]`, `rerank` with a
-cross-encoder and/or ColBERT method, `filter`, and `citations`, and **MAY**
-implement `transform`, `graph`, `multiVector`, `sparseEmbed`, `streaming`, and
-`pagination`.
+### 14.2 Level L1 — Retrieval (RECOMMENDED)
+
+An **L1** server is L0 and additionally **SHOULD** implement `retrieve` with
+`modes:["dense","sparse","hybrid"]`, support `filter` and `citations`, populate
+`Hit.score` consistently (higher = more relevant), and honour `k`/`minScore`.
+This is the target for a general-purpose RAG backend.
+
+### 14.3 Level L2 — SOTA (OPTIONAL)
+
+An **L2** server is L1 and additionally **SHOULD** advertise and implement a
+selection of: `rerank` (cross-encoder and/or ColBERT), `multiVector` / late
+interaction (incl. visual-document `modalities:["image"]`), `sparseEmbed`,
+`query/transform`, `graph`, `streaming`, `pagination`, `log`, and reproducibility
+(`retrieve.deterministic`/`snapshots`, §7.7.1). L2 is what lets a client drive a
+full hybrid → fuse → rerank → MMR pipeline through one connection.
+
+### 14.4 Client conformance
 
 A **conforming client** **MUST** send `initialize` first, honour the negotiated
-version, never call an unadvertised method or pass an unadvertised option
-(unless `strict:false`), and tolerate unknown fields/`_meta`/capability keys.
+version, never call an unadvertised method or pass an unadvertised option (unless
+`strict:false`), correlate responses by `id` (§4.7), tolerate unknown
+fields/`_meta`/capability keys, and function correctly if it drops every
+`notifications/progress` and `log` notification.
 
-The JSON Schemas in [`/schema`](../schema) are normative for message shapes; the
-[`/conformance`](../conformance) suite validates any server.
+The JSON Schema in [`/schema`](../schema) is normative for message shapes; the
+[`/conformance`](../conformance) suite validates any server, in any language,
+over stdio or HTTP.
 
 ---
 
 ## 15. Security Considerations
 
-- **stdio** servers run with the launcher's privileges; treat server binaries as
-  trusted code.
-- **HTTP** servers **SHOULD** bind to loopback unless behind authenticated
-  transport; RCP carries no auth of its own.
-- Servers **MUST** treat all `params` as untrusted, validate before use, and
-  sanitise `filter` trees and `graph` ops that reach an underlying query engine
-  to prevent injection.
-- Servers **SHOULD** enforce `maxK`/`maxCandidates`/`batchLimit` and return
-  `-32011` under load rather than exhausting resources.
+RCP moves *untrusted external content* toward an LLM's context window, so its
+threat model is dominated by two concerns absent from ordinary RPC: **indirect
+prompt injection** (retrieved text is itself adversarial) and **provenance /
+trust** of what gets grounded. Implementers **MUST** treat retrieved content as
+untrusted data, never as instructions.
+
+### 15.1 Trust boundaries
+
+- **stdio** servers run with the launcher's privileges; a launched binary is
+  *trusted code* — vet it as you would any dependency. The launcher **SHOULD**
+  pass least-privilege environment and working directory.
+- **HTTP** servers **SHOULD** bind to loopback unless fronted by authenticated,
+  encrypted transport (TLS). RCP defines no auth of its own (§5.2); deployments
+  layer `Authorization`, mTLS, or API keys at the transport and apply them
+  *before* `initialize`.
+- A **client MUST NOT** assume a server is honest about its `capabilities`: a
+  malicious or buggy server can claim `citations` and fabricate `citation.uri`,
+  or claim `trust.level:"trusted"` for poisoned content. Capability claims are
+  hints for feature negotiation, not security guarantees.
+
+### 15.2 Indirect prompt injection (the primary RAG threat)
+
+Retrieved passages may contain text engineered to hijack a downstream LLM
+(“ignore previous instructions…”). RCP cannot neutralise this alone, but it is
+designed so a careful client can:
+
+- Servers **SHOULD** populate `Hit.trust` with real provenance and **MUST NOT**
+  label user-generated or web-scraped content `"trusted"`.
+- Clients **SHOULD** keep retrieved content in a *data* channel distinct from
+  the instruction channel of any prompt they build, delimit it unambiguously,
+  and **SHOULD** down-weight or quarantine `trust.level:"untrusted"` hits.
+- Servers and clients **MUST NOT** interpret any field of a `retrieve` result
+  (text, `meta`, `citation`) as an RCP control instruction. There is no
+  in-band mechanism by which retrieved content can change protocol behaviour.
+
+### 15.3 Corpus / index poisoning
+
+An attacker who can write to the index (via `index/add` or an upstream feed) can
+plant documents crafted to rank highly for a target query and then inject or
+mislead. Mitigations: servers **SHOULD** authenticate and authorise `index/add`
+/ `index/delete` independently of read access; **SHOULD** record provenance so
+tainted sources can be revoked; and **MAY** expose `indexVersion` (§7.7.1) so a
+client can pin a vetted snapshot and audit what changed.
+
+### 15.4 Injection into the backing query engine
+
+`filter` trees, `graph` ops, and `id`s flow into a real query engine (SQL, a
+vector DB filter DSL, a Cypher query). Servers **MUST** treat all `params` as
+untrusted, validate `filter` field names against the advertised set (§8),
+parameterise rather than string-concatenate, and reject unadvertised operators
+with `-32602`. A server **MUST NOT** evaluate client-supplied expressions as
+code.
+
+### 15.5 Resource exhaustion & denial of service
+
+- Servers **MUST** enforce `maxK` / `maxCandidates` / `batchLimit` and
+  **SHOULD** cap total request body size, embedding batch size, `hops` on
+  `graph`, and `candidateK`, returning `-32602` or shedding load with `-32011`.
+- Servers **SHOULD** apply per-client rate limiting and per-request deadlines,
+  and **SHOULD** bound the fan-out of `query/transform` (e.g. `multi-query n`).
+- Clients **MUST** bound their own fan-out and set deadlines when federating
+  (§16.2) so one slow engine cannot stall a query.
+- Fetching a Content `uri` (§4.8) is an SSRF vector: a server **MUST** restrict
+  which schemes/hosts it will dereference and **SHOULD** default to refusing
+  `file://` and private-network URIs unless explicitly configured.
+
+### 15.6 Data protection & privacy
+
+- Queries and returned text may contain PII or secrets. Servers **SHOULD NOT**
+  log full query/response bodies by default and **SHOULD** support redaction.
+- Access control is a *server* responsibility: a multi-tenant server **MUST**
+  scope retrieval to the caller's authorised corpus and **MUST NOT** leak one
+  tenant's documents to another via shared `id` spaces or `catalog/list`.
+- `catalog/list` and `info` reveal topology and capabilities; a server **MAY**
+  restrict them to authenticated callers.
+
+### 15.7 Supply chain & versioning
+
+Pin server binaries and model identities (`embed.identity`); a silent model swap
+changes the embedding space and corrupts a client-side ANN index. Treat
+`indexVersion` and `embed.identity` as part of a reproducible retrieval
+configuration.
 
 ---
 
@@ -826,14 +1017,35 @@ RRF(d) = Σ_engine  weight_engine / (rrfK + rank_engine(d))          rrfK defaul
 
 where `rank_engine(d)` is the 1-based position of document `d` in that engine's
 result list (engines that did not return `d` contribute nothing). The fused list
-is sorted by descending `RRF(d)` and truncated to `k`.
+is sorted by descending `RRF(d)` and truncated to `k`. The constant `rrfK`
+(conventionally 60, per Cormack et al. 2009) damps the influence of low ranks;
+larger values flatten the contribution curve.
 
-Document identity across engines is the **stringified `Hit.id`** (§7.7). Because
-`id` spaces differ between engines, a client **MAY** instead key on a content
-hash or `citation.uri` when engines are known to share a corpus; this is a
-client policy, not a protocol requirement. Alternatives to RRF (weighted score
-normalisation, a second-stage cross-encoder `rerank` over the union) are
-permitted; RRF is the interoperable default.
+**Weighted score fusion** is the alternative when engines expose *comparable*
+scores. Because raw scores from different scorers are not comparable, they
+**MUST** be normalised per engine first — min-max to `[0,1]` over that engine's
+returned set is the RECOMMENDED normaliser:
+
+```
+norm_engine(d) = (score_engine(d) - min_engine) / (max_engine - min_engine)
+Fused(d)       = Σ_engine  weight_engine · norm_engine(d)
+```
+
+RRF is preferred by default precisely because it sidesteps this normalisation
+footgun. A client **MAY** also run a second-stage cross-encoder `rerank` over the
+union of candidates — the most accurate option when one engine offers `rerank`.
+
+**Tie-breaking.** Ties in the fused score **MUST** be broken deterministically so
+fusion is reproducible: order by (1) higher fused score, then (2) higher summed
+weight, then (3) lexicographically smaller stringified `id`. This guarantees a
+total order independent of engine response arrival order.
+
+**Deduplication.** Document identity across engines is the **stringified
+`Hit.id`** (§7.7). Because `id` spaces differ between engines, a client **MAY**
+instead key on a content hash or `citation.uri` when engines are known to share a
+corpus; this is a client policy, not a protocol requirement. When two hits
+collapse to one identity, the fused hit **SHOULD** retain the richest body
+(longest `text` / most `content`) and merge `meta`.
 
 Each fused hit **SHOULD** carry its origin in `meta.engine` (the registry `id`)
 and **MAY** retain `meta.engineRank`/`meta.engineScore` for debugging.
@@ -846,6 +1058,40 @@ is the **intersection**. A federated `retrieve` runs against the subset of
 engines advertising `retrieve`; a federated `graph` op runs against those
 advertising `graph` with that op. Reference SDKs expose both a per-engine handle
 and a `Federation` facade implementing this section.
+
+---
+
+## 17. Observability
+
+Production retrieval needs to be debuggable and measurable. RCP exposes two
+non-intrusive channels; both are optional and never alter retrieval semantics.
+
+### 17.1 Log notifications
+
+A server that advertises `log` **MAY** emit `log` notifications (no `id`, no
+response) at any time:
+
+```json
+{ "jsonrpc": "2.0", "method": "log",
+  "params": { "level": "info", "message": "reranked 100→30",
+              "logger"?: "pipeline", "data"?: { "latencyMs": 42 },
+              "_meta"?: { "progressToken": "t2" } } }
+```
+
+- `level` is a syslog-style severity: `"debug"`, `"info"`, `"notice"`,
+  `"warning"`, `"error"`. A client **MAY** advertise a minimum level in
+  `initialize.params` (`_meta.logLevel`); servers **SHOULD** honour it.
+- Logs are diagnostics only. A client **MUST** function correctly if it drops
+  every `log` notification, and **MUST NOT** parse log text for control flow.
+- Over stdio, logs travel as `log` notifications on stdout — *not* on stderr —
+  so a supervising client sees them in-band and correlated with requests.
+
+### 17.2 Usage & telemetry
+
+The `usage` object on a `retrieve`/`rerank`/`graph` result (§7.7) carries
+per-request telemetry (`candidates`, `reranked`, `latencyMs`, `notes`). Servers
+**SHOULD** populate it; clients **SHOULD** treat it as advisory. Trace
+correlation ids belong in `_meta` (e.g. `_meta.traceId`), never in a core field.
 
 ---
 
@@ -866,14 +1112,22 @@ and a `Federation` facade implementing this section.
 | Hybrid + RRF | `retrieve mode:"hybrid", fusion:{method:"rrf"}` |
 | Cross-encoder rerank | `rerank method:"cross-encoder"` or `retrieve.rerank` |
 | Late interaction (ColBERT) | `multiVector` + `rerank method:"colbert"` |
+| Visual-document retrieval (ColPali/ColQwen) | `multiVector modalities:["image"]`, `retrieve modality:"image"`, `image` Content blocks |
+| Multimodal / cross-modal retrieval | `retrieve modality:"multimodal"`, Content blocks (§4.8) |
+| Sparse late interaction (SPLATE) | `sparseEmbed` candidate-gen + `rerank method:"colbert"` |
+| Matryoshka / truncatable embeddings | `embed.dimension` advertised; client truncates |
 | MMR diversification | `retrieve.mmr` |
 | Query rewrite / HyDE / multi-query | `query/transform` or `retrieve.rewrite` |
+| Step-back prompting | `query/transform method:"step-back"` |
 | Multi-hop / agentic | client loop over `query/transform` + `retrieve` + `graph:"drift"` |
-| GraphRAG local/global | `graph op:"local"|"global"` |
+| GraphRAG local/global | `graph op:"local"\|"global"` |
 | Contextual retrieval (Anthropic) | `index/add contextual:true` |
 | Citations / attribution | `citations` capability, `Hit.citation` |
+| Provenance / trust weighting | `Hit.trust` (§15.2) |
 | Freshness / recency bias | `retrieve.recency` |
 | Metadata filtering | `filter` capability, `retrieve.filter` |
+| Reproducible eval / regression tests | `retrieve.seed`, `retrieve.indexVersion` (§7.7.1), Appendix F |
+| Multi-backend fan-out + fusion | Federation (§16), RRF / weighted (§16.3) |
 
 ## Appendix C — Relationship to MCP and ACP
 
@@ -935,4 +1189,56 @@ outcome).
 
 | Version | Date | Changes |
 |---------|------|---------|
-| `RCP/1` 1.0 | 2025 | Initial stable release. Core methods (`initialize`, `info`, `embed`, `embed/sparse`, `embed/multi`, `rerank`, `retrieve`, `query/transform`, `graph`, `index/add`, `index/delete`, `catalog/list`, `shutdown`, `notifications/cancel`, `ping`), capability negotiation, stdio + HTTP(+SSE) transports, metadata filtering, streaming/progress, pagination, batching, structured errors with retryability, federation (registry + RRF fusion), and the type-theoretic C++ SDK with Python bindings. |
+| `RCP/1` 1.0 | 2025 | Initial stable release. Core methods (`initialize`, `info`, `embed`, `embed/sparse`, `embed/multi`, `rerank`, `retrieve`, `query/transform`, `graph`, `index/add`, `index/delete`, `catalog/list`, `shutdown`, `notifications/cancel`, `ping`), capability negotiation, stdio + HTTP(+SSE) transports, a Content/modality model for multimodal & visual-document retrieval, metadata filtering, streaming/progress, `log` observability, pagination, batching, structured errors with retryability, determinism (`seed`/`indexVersion`), a full threat model, federation (registry + RRF/weighted fusion), and the type-theoretic C++ SDK with Python bindings. |
+
+## Appendix F — Evaluation & quality
+
+RCP is a transport, not a ranker, but it is designed so retrieval *quality* can
+be measured and compared across engines. Because a `retrieve` result is a ranked
+list of `Hit`s with stable `id`s, standard IR metrics apply directly. Given a
+query with graded relevance judgements, common measures are:
+
+- **Recall@k** — fraction of all relevant documents present in the top `k`.
+- **MRR** — mean reciprocal rank of the first relevant hit: `mean(1/rank_first)`.
+- **nDCG@k** — `DCG@k / IDCG@k`, `DCG@k = Σ_{i=1..k} rel_i / log2(i+1)`; rewards
+  putting highly-relevant hits near the top.
+- **MAP** — mean average precision across queries.
+
+Reproducible evaluation relies on §7.7.1: fix `seed` and pin `indexVersion` so a
+benchmark is repeatable, and read `usage.candidates`/`usage.reranked` to attribute
+quality to each pipeline stage. A conformance-plus test harness **SHOULD** report
+nDCG@10 and Recall@50 on a held-out set when comparing engines behind the same
+RCP surface. Metric computation is intentionally client-side: any engine that
+speaks RCP can be dropped into the same harness without change.
+
+## Appendix G — Glossary
+
+| Term | Meaning |
+|------|---------|
+| **Bi-encoder** | Encodes query and document independently into one vector each; fast, approximate (dense retrieval). |
+| **Cross-encoder** | Jointly encodes a (query, document) pair for one relevance score; accurate, used for reranking. |
+| **Late interaction** | Multi-vector scoring (MaxSim) that approximates cross-encoder accuracy at bi-encoder speed (ColBERT, ColPali). |
+| **Learned-sparse** | A sparse term→weight vector produced by a model (SPLADE), searchable with an inverted index. |
+| **Dense / sparse / hybrid** | Retrieval over dense vectors / lexical or learned-sparse terms / a fusion of both. |
+| **RRF** | Reciprocal Rank Fusion — rank-only list merging robust to incomparable scores (§16.3). |
+| **MMR** | Maximal Marginal Relevance — re-ranks for relevance–diversity trade-off. |
+| **HyDE** | Hypothetical Document Embeddings — embed an LLM-generated pseudo-answer as the query. |
+| **GraphRAG** | Retrieval over a knowledge graph / community summaries (local, global, drift). |
+| **Contextual retrieval** | Prepending chunk-situating context before embedding/indexing (Anthropic). |
+| **Recall stage / rerank stage** | Cheap high-recall candidate generation, then expensive precise reranking. |
+| **Aggregator** | A server that federates downstream engines and advertises `catalog`. |
+| **Modality** | Coarse content kind: text, image, audio, code, multimodal (§4.8). |
+
+## Appendix H — Normative references
+
+- **[RFC 2119]** Key words for use in RFCs to Indicate Requirement Levels.
+- **[RFC 8174]** Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words.
+- **[RFC 3986]** Uniform Resource Identifier (URI): Generic Syntax — for `uri` fields.
+- **[RFC 4648]** The Base16, Base32, and Base64 Data Encodings — for inline `data`.
+- **[RFC 8259]** The JavaScript Object Notation (JSON) Data Interchange Format.
+- **[JSON-RPC 2.0]** JSON-RPC 2.0 Specification, <https://www.jsonrpc.org/specification>.
+- **[JSON Schema 2020-12]** JSON Schema draft 2020-12 — the normative message schema at [`/schema/rcp-1.0.json`](../schema/rcp-1.0.json).
+
+Informative: Cormack et al., *Reciprocal Rank Fusion* (SIGIR 2009); Khattab &
+Zaharia, *ColBERT* (SIGIR 2020); Formal et al., *SPLADE* (2021) and *SPLATE*
+(2024); Faysse et al., *ColPali* (2024).

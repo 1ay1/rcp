@@ -30,6 +30,7 @@ inline constexpr std::string_view IndexAdd    = "index/add";
 inline constexpr std::string_view IndexDelete = "index/delete";
 inline constexpr std::string_view Catalog     = "catalog/list";
 inline constexpr std::string_view Cancel      = "notifications/cancel";
+inline constexpr std::string_view Log         = "log";
 inline constexpr std::string_view Ping        = "ping";
 inline constexpr std::string_view Shutdown    = "shutdown";
 } // namespace method
@@ -69,7 +70,7 @@ enum class Capability {
 // presence ⇒ supported. Each optional is nullopt (absent) or a metadata object.
 struct Capabilities {
     std::optional<Json> embed, sparse_embed, multi_vector, rerank, retrieve, transform, graph, index;
-    bool streaming = false, pagination = false, citations = false;
+    bool streaming = false, pagination = false, citations = false, log_ = false;
 
     [[nodiscard]] const std::optional<Json>& slot(Capability c) const noexcept {
         switch (c) {
@@ -87,12 +88,29 @@ struct Capabilities {
     [[nodiscard]] bool has(Capability c) const noexcept { return slot(c).has_value(); }
 
     // Ergonomic builders (fluent) for a server advertising what it offers.
-    Capabilities& with_embed(Dimension dim, std::string identity) {
+    Capabilities& with_embed(Dimension dim, std::string identity,
+                             std::vector<std::string> modalities = {}) {
         embed = Json{{"dimension", dim.get()}, {"identity", std::move(identity)}, {"normalized", true}};
+        if (!modalities.empty()) (*embed)["modalities"] = std::move(modalities);
         return *this;
     }
-    Capabilities& with_retrieve(std::size_t max_k, std::vector<std::string> modes) {
+    Capabilities& with_sparse(std::string identity, std::size_t vocabulary = 0) {
+        sparse_embed = Json{{"identity", std::move(identity)}};
+        if (vocabulary) (*sparse_embed)["vocabulary"] = vocabulary;
+        return *this;
+    }
+    Capabilities& with_multi(Dimension dim, std::string identity,
+                             std::string similarity = "dot",
+                             std::vector<std::string> modalities = {}) {
+        multi_vector = Json{{"dimension", dim.get()}, {"identity", std::move(identity)},
+                            {"similarity", std::move(similarity)}};
+        if (!modalities.empty()) (*multi_vector)["modalities"] = std::move(modalities);
+        return *this;
+    }
+    Capabilities& with_retrieve(std::size_t max_k, std::vector<std::string> modes,
+                                std::vector<std::string> modalities = {}) {
         retrieve = Json{{"maxK", max_k}, {"modes", std::move(modes)}, {"fusion", {"rrf"}}, {"mmr", true}};
+        if (!modalities.empty()) (*retrieve)["modalities"] = std::move(modalities);
         return *this;
     }
     Capabilities& with_rerank(std::vector<std::string> methods) {
@@ -107,6 +125,11 @@ struct Capabilities {
         transform = Json{{"methods", std::move(methods)}};
         return *this;
     }
+    // Free-form opt-ins for object-valued flags and vendor/extension keys.
+    Capabilities& with_streaming()  { streaming = true;  return *this; }
+    Capabilities& with_pagination() { pagination = true; return *this; }
+    Capabilities& with_citations()  { citations = true;  return *this; }
+    Capabilities& with_log()        { log_ = true;       return *this; }
 
     [[nodiscard]] Json to_json() const {
         Json j = Json::object();
@@ -115,9 +138,11 @@ struct Capabilities {
         put("multiVector", multi_vector); put("rerank", rerank);
         put("retrieve", retrieve);     put("transform", transform);
         put("graph", graph);           put("index", index);
-        if (streaming)  j["streaming"] = true;
-        if (pagination) j["pagination"] = true;
-        if (citations)  j["citations"] = true;
+        // Object-form presence flags (spec §6): presence ⇒ supported.
+        if (streaming)  j["streaming"]  = Json::object();
+        if (pagination) j["pagination"] = Json::object();
+        if (citations)  j["citations"]  = Json::object();
+        if (log_)       j["log"]        = Json::object();
         return j;
     }
     static Capabilities from_json(const Json& j) {
@@ -131,9 +156,11 @@ struct Capabilities {
         c.embed = get("embed"); c.sparse_embed = get("sparseEmbed"); c.multi_vector = get("multiVector");
         c.rerank = get("rerank"); c.retrieve = get("retrieve"); c.transform = get("transform");
         c.graph = get("graph"); c.index = get("index");
-        c.streaming  = j.value("streaming", false);
-        c.pagination = j.value("pagination", false);
-        c.citations  = j.value("citations", false);
+        // A flag is "present" whether it arrived as an object (§6) or a legacy bool.
+        c.streaming  = j.contains("streaming")  && !j["streaming"].is_null();
+        c.pagination = j.contains("pagination") && !j["pagination"].is_null();
+        c.citations  = j.contains("citations")  && !j["citations"].is_null();
+        c.log_       = j.contains("log")        && !j["log"].is_null();
         return c;
     }
 };
@@ -163,16 +190,22 @@ struct Hit {
     std::string id;
     Score       score{0.0};
     std::string text;
+    std::string modality;   // "text"|"image"|"audio"|"code"|"multimodal" (§4.8)
     Json        meta;
     Json        citation;
+    Json        trust;      // provenance {level, score?} (§15.2)
+    Json        content;    // non-text bodies [Content] (§4.8)
 
     static Hit from_json(const Json& j) {
         Hit h;
         if (j.contains("id")) h.id = j["id"].is_string() ? j["id"].get<std::string>() : j["id"].dump();
         h.score = Score{j.value("score", 0.0)};
         h.text  = j.value("text", std::string{});
+        h.modality = j.value("modality", std::string{});
         if (j.contains("meta"))     h.meta = j["meta"];
         if (j.contains("citation")) h.citation = j["citation"];
+        if (j.contains("trust"))    h.trust = j["trust"];
+        if (j.contains("content"))  h.content = j["content"];
         return h;
     }
 };

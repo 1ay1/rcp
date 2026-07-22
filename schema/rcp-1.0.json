@@ -50,9 +50,12 @@
           "properties": {
             "maxK": { "type": "integer", "minimum": 1 },
             "modes": { "type": "array", "items": { "enum": ["dense", "sparse", "hybrid"] } },
+            "modalities": { "type": "array", "items": { "enum": ["text", "image", "audio", "code", "multimodal"] } },
             "fusion": { "type": "array", "items": { "enum": ["rrf", "weighted"] } },
             "mmr": { "type": "boolean" },
             "rerankBuiltin": { "type": "boolean" },
+            "deterministic": { "type": "boolean" },
+            "snapshots": { "type": "boolean" },
             "defaultMode": { "enum": ["dense", "sparse", "hybrid"] }
           }
         },
@@ -91,17 +94,48 @@
         "citations": {
           "oneOf": [ { "type": "boolean" }, { "type": "object" } ]
         },
+        "log": { "type": "object", "properties": { "levels": { "type": "array", "items": { "type": "string" } } } },
         "catalog": { "type": "object" }
       },
       "additionalProperties": true
+    },
+    "Content": {
+      "description": "A tagged content block for multimodal retrieval (spec §4.8).",
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["text", "image", "audio", "blob"] },
+        "text": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "data": { "type": "string", "contentEncoding": "base64" },
+        "uri": { "type": "string" }
+      }
+    },
+    "QueryInput": {
+      "description": "A query/passage: a bare string, one Content block, or an array of them.",
+      "oneOf": [
+        { "type": "string" },
+        { "$ref": "#/$defs/Content" },
+        { "type": "array", "items": { "$ref": "#/$defs/Content" } }
+      ]
     },
     "Citation": {
       "type": "object",
       "properties": {
         "source": { "type": "string" },
         "uri": { "type": "string" },
+        "title": { "type": "string" },
         "start": { "type": "integer" },
-        "end": { "type": "integer" }
+        "end": { "type": "integer" },
+        "page": { "type": "integer" }
+      }
+    },
+    "Trust": {
+      "type": "object",
+      "required": ["level"],
+      "properties": {
+        "level": { "enum": ["trusted", "community", "untrusted"] },
+        "score": { "type": "number" }
       }
     },
     "Hit": {
@@ -111,6 +145,8 @@
         "id": { "type": ["string", "number"] },
         "score": { "type": "number" },
         "text": { "type": "string" },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/Content" } },
+        "modality": { "enum": ["text", "image", "audio", "code", "multimodal"] },
         "meta": { "type": "object" },
         "vector": { "type": "array", "items": { "type": "number" } },
         "scores": {
@@ -118,6 +154,7 @@
           "additionalProperties": { "type": "number" }
         },
         "citation": { "$ref": "#/$defs/Citation" },
+        "trust": { "$ref": "#/$defs/Trust" },
         "chunk": {
           "type": "object",
           "properties": {
@@ -229,7 +266,7 @@
       "type": "object",
       "required": ["texts"],
       "properties": {
-        "texts": { "type": "array", "items": { "type": "string" } },
+        "texts": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
         "kind": { "enum": ["query", "document"] }
       }
     },
@@ -252,16 +289,18 @@
         "matrices": {
           "type": "array",
           "items": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } }
-        }
+        },
+        "dimension": { "type": "integer", "minimum": 1 }
       }
     },
     "RerankParams": {
       "type": "object",
       "required": ["query", "passages"],
       "properties": {
-        "query": { "type": "string" },
-        "passages": { "type": "array", "items": { "type": "string" } },
+        "query": { "$ref": "#/$defs/QueryInput" },
+        "passages": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
         "method": { "enum": ["cross-encoder", "colbert", "llm"] },
+        "model": { "type": "string" },
         "topN": { "type": "integer", "minimum": 1 }
       }
     },
@@ -277,9 +316,10 @@
       "type": "object",
       "required": ["query", "k"],
       "properties": {
-        "query": { "type": "string" },
+        "query": { "$ref": "#/$defs/QueryInput" },
         "k": { "type": "integer", "minimum": 1 },
         "mode": { "enum": ["dense", "sparse", "hybrid"] },
+        "modality": { "enum": ["text", "image", "audio", "code", "multimodal"] },
         "candidateK": { "type": "integer", "minimum": 1 },
         "fusion": {
           "type": "object",
@@ -291,17 +331,19 @@
         },
         "rerank": {
           "oneOf": [
-            { "type": "object", "properties": { "method": { "enum": ["cross-encoder", "colbert", "llm"] }, "topN": { "type": "integer" } } },
+            { "type": "object", "properties": { "method": { "enum": ["cross-encoder", "colbert", "llm"] }, "model": { "type": "string" }, "topN": { "type": "integer" } } },
             { "const": false }
           ]
         },
         "mmr": { "type": "object", "properties": { "lambda": { "type": "number", "minimum": 0, "maximum": 1 } } },
-        "rewrite": { "oneOf": [{ "enum": ["rewrite", "hyde", "multi-query", "decompose"] }, { "const": false }] },
+        "rewrite": { "oneOf": [{ "enum": ["rewrite", "hyde", "multi-query", "decompose", "step-back"] }, { "const": false }] },
         "filter": { "$ref": "#/$defs/FilterClause" },
         "minScore": { "type": "number" },
         "recency": { "type": "object", "properties": { "field": { "type": "string" }, "halfLifeDays": { "type": "number" } } },
         "includeText": { "type": "boolean" },
         "includeVectors": { "type": "boolean" },
+        "seed": { "type": "integer" },
+        "indexVersion": { "type": "string" },
         "strict": { "type": "boolean" },
         "cursor": { "type": "string" },
         "_meta": { "type": "object" }
@@ -313,6 +355,7 @@
       "properties": {
         "hits": { "type": "array", "items": { "$ref": "#/$defs/Hit" } },
         "nextCursor": { "type": "string" },
+        "indexVersion": { "type": "string" },
         "usage": { "type": "object" },
         "rewrittenQuery": { "type": "string" }
       }
@@ -434,6 +477,25 @@
     "PingResult": {
       "type": "object",
       "properties": { "nonce": { "type": ["string", "number"] } }
+    },
+    "LogNotification": {
+      "type": "object",
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "const": "log" },
+        "params": {
+          "type": "object",
+          "required": ["level", "message"],
+          "properties": {
+            "level": { "enum": ["debug", "info", "notice", "warning", "error"] },
+            "message": { "type": "string" },
+            "logger": { "type": "string" },
+            "data": { "type": "object" },
+            "_meta": { "type": "object" }
+          }
+        }
+      }
     },
     "ErrorData": {
       "type": "object",
