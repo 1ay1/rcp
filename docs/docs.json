@@ -16,12 +16,10 @@
   },
   "fonts": {
     "heading": {
-      "family": "Lora",
-      "format": "woff2"
+      "family": "Lora"
     },
     "body": {
-      "family": "Inter",
-      "format": "woff2"
+      "family": "Inter"
     }
   },
   "favicon": {
