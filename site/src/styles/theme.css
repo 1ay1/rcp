@@ -1,0 +1,118 @@
+/* RCP brand theme — indigo/violet accent, distinct from ACP (blue) and MCP.
+   Overrides Starlight's default accent + gray scales and styles the splash hero. */
+
+:root {
+  /* Accent — indigo/violet */
+  --sl-color-accent-low: #1f1a4d;
+  --sl-color-accent: #6d5efc;
+  --sl-color-accent-high: #c3bdff;
+
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #eceef2;
+  --sl-color-gray-2: #c0c2c7;
+  --sl-color-gray-3: #888b96;
+  --sl-color-gray-4: #545861;
+  --sl-color-gray-5: #353841;
+  --sl-color-gray-6: #24272f;
+  --sl-color-black: #16181d;
+
+  --rcp-gradient: linear-gradient(135deg, #8b7dff 0%, #6d5efc 45%, #b06bff 100%);
+}
+
+/* Light mode accent tuning */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #dcd8ff;
+  --sl-color-accent: #5b4be6;
+  --sl-color-accent-high: #2a2260;
+}
+
+/* Fonts — clean modern pairing */
+:root {
+  --sl-font: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --sl-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+/* --- Splash / landing hero --- */
+.hero > img,
+.hero > .hero-html {
+  filter: drop-shadow(0 0 48px rgba(109, 94, 252, 0.35));
+}
+
+.hero h1 {
+  background: var(--rcp-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.hero .tagline {
+  color: var(--sl-color-gray-2);
+  font-size: clamp(1.05rem, 2.5vw, 1.35rem);
+}
+
+/* Primary CTA button uses the brand gradient */
+.hero .actions a[data-variant="primary"] {
+  background: var(--rcp-gradient);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 24px rgba(109, 94, 252, 0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.hero .actions a[data-variant="primary"]:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(109, 94, 252, 0.55);
+}
+
+/* --- Feature cards get a subtle brand border glow on hover --- */
+.card {
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  border-color: var(--sl-color-accent);
+  transform: translateY(-3px);
+}
+
+/* --- Inline wire-protocol code blocks --- */
+.rcp-wire {
+  font-family: var(--sl-font-mono);
+}
+
+/* --- Agent stack widget (MCP/ACP/RCP) --- */
+.rcp-stack {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 32rem;
+  margin: 1.5rem auto;
+}
+.rcp-stack .layer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.9rem 1.2rem;
+  border-radius: 0.6rem;
+  font-weight: 600;
+  color: #fff;
+}
+.rcp-stack .layer span {
+  font-weight: 400;
+  opacity: 0.85;
+  font-size: 0.9rem;
+}
+.rcp-stack .acp { background: linear-gradient(135deg, #0084d1, #00bcff); }
+.rcp-stack .mcp { background: linear-gradient(135deg, #4b5563, #6b7280); }
+.rcp-stack .rcp { background: var(--rcp-gradient); box-shadow: 0 4px 20px rgba(109,94,252,0.4); }
+
+/* Badge in hero */
+.rcp-badge {
+  display: inline-block;
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--sl-color-accent-high);
+  background: color-mix(in srgb, var(--sl-color-accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 40%, transparent);
+}

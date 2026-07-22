@@ -187,7 +187,9 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 - `sdk/python/` — pybind11 bindings and the `rcp` package.
 - `conformance/` — transport-agnostic conformance suite.
 - `examples/` — runnable Python client/server.
-- `docs/` — the GitHub Pages homepage (`build_spec.py` renders the spec to HTML).
+- `site/` — the documentation website (Astro + Starlight), auto-deployed to
+  GitHub Pages. The spec and schema stay the source of truth; the site syncs
+  them at build time.
 - `rcp.json` — sample engine registry.
 
 ## License

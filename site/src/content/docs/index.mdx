@@ -1,0 +1,72 @@
+---
+title: The Retrieval Context Protocol
+description: One open protocol so any RAG engine — any language, any vendor — can share its power. The retrieval companion to MCP and ACP.
+template: splash
+hero:
+  tagline: One open protocol so <b>any</b> RAG engine — any language, any vendor — can share its power with any client. The retrieval companion to <b>MCP</b> and <b>ACP</b>.
+  image:
+    dark: ../../assets/logo-dark.svg
+    light: ../../assets/logo-light.svg
+  actions:
+    - text: Read the spec
+      link: /rcp/reference/spec/
+      icon: right-arrow
+      variant: primary
+    - text: Quickstart
+      link: /rcp/start/quickstart/
+      variant: secondary
+    - text: View on GitHub
+      link: https://github.com/1ay1/rcp
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<div style="text-align:center; margin: -1rem 0 2.5rem;">
+  <span class="rcp-badge">RCP/1 · Stable · JSON-RPC 2.0</span>
+</div>
+
+## Retrieval, standardized
+
+MCP lets an agent call **tools**. ACP lets an editor drive an **agent**. **RCP**
+is the missing third contract: it lets any client pull **retrieval context** from
+any RAG engine over a tiny, transport-free JSON-RPC surface. Write your retriever
+once; every RCP client can query it.
+
+<div class="rcp-stack not-content">
+  <div class="layer acp"><b>ACP</b><span>editor ⇄ agent</span></div>
+  <div class="layer mcp"><b>MCP</b><span>agent ⇄ tools</span></div>
+  <div class="layer rcp"><b>RCP</b><span>agent ⇄ retrieval</span></div>
+</div>
+
+## Why RCP
+
+<CardGrid stagger>
+  <Card title="Frontier-native" icon="rocket">
+    Hybrid dense+sparse, ColBERT/ColPali late interaction (MaxSim), rerankers,
+    MMR diversification, GraphRAG, agentic multi-hop, citations, and metadata
+    filtering are all first-class — not bolted on.
+  </Card>
+  <Card title="Transport-free" icon="random">
+    JSON-RPC 2.0 over newline-delimited stdio *or* HTTP. If it can read a line
+    and parse JSON, it can speak RCP.
+  </Card>
+  <Card title="Composable" icon="puzzle">
+    A registry (`rcp.json`) or a catalog-capable aggregator lets a client target
+    one backend (**Selector**) or fuse many (**Federation**) with RRF.
+  </Card>
+  <Card title="Type-theoretic SDKs" icon="seti:cpp">
+    A header-only C++23 SDK with refinement types (`TopK::make`, `Dimension`,
+    `Score`) plus pybind11 Python bindings. Conformance suite included.
+  </Card>
+</CardGrid>
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Introduction" href="/rcp/start/introduction/" description="What RCP is, who it's for, and the problem it solves." />
+  <LinkCard title="Architecture" href="/rcp/start/architecture/" description="Roles, the retrieval pipeline model, and the message flow." />
+  <LinkCard title="Quickstart" href="/rcp/start/quickstart/" description="Talk to an engine in C++ or Python in under five minutes." />
+  <LinkCard title="Specification — RCP/1" href="/rcp/reference/spec/" description="The complete normative specification. Stable." />
+</CardGrid>
