@@ -75,6 +75,7 @@
           },
           {
             "group": "Methods",
+            "tag": "RCP/1",
             "pages": [
               "methods/overview",
               "methods/embed",

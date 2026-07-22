@@ -254,10 +254,15 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 
 RCP is meant to be a community standard, not a single vendor's API. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to file issues, add an engine or
-SDK, and run the conformance suite; [`docs/community/governance.mdx`](docs/community/governance.mdx)
+SDK, and run the conformance suite; [`GOVERNANCE.md`](GOVERNANCE.md) and
+[`docs/community/governance.mdx`](docs/community/governance.mdx)
 for how the spec evolves (additive and capability-discovered — the wire never
-breaks under you); and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community
-standards.
+breaks under you); [`MAINTAINERS.md`](MAINTAINERS.md) for who stewards the
+project; [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community standards; and
+[`SECURITY.md`](SECURITY.md) to report a vulnerability privately.
+
+Working with an AI agent in this repo? [`AGENTS.md`](AGENTS.md) is the
+agent-readable guide to the layout, toolchains, and how to verify a change.
 
 ## License
 

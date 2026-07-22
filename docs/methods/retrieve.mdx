@@ -10,6 +10,20 @@ transform, hybrid recall, fusion, rerank, MMR diversification, recency weighting
 metadata filtering, and citation assembly. Every option beyond `query`/`k` is
 optional and honoured only within the advertised `retrieve` capability.
 
+<br />
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+
+    Client->>Server: retrieve { query, k, mode, rerank, mmr, filter }
+    Note right of Server: transform → recall →<br/>fuse → rerank → diversify
+    Server-->>Client: result { hits[] with score, text, citation }
+```
+
+<br />
+
 <CodeGroup>
 ```json Request
 {

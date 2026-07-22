@@ -8,6 +8,22 @@ icon: play
 `info` may precede it. It negotiates the protocol version and exchanges
 capabilities.
 
+<br />
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Server
+
+    Note over Client, Server: Connection established
+    Client->>Server: initialize { protocolVersion, client, capabilities }
+    Note right of Server: Negotiate version<br/>& capabilities
+    Server-->>Client: initialize response { protocolVersion, server, capabilities }
+    Note over Client, Server: Ready to embed / retrieve / graph
+```
+
+<br />
+
 ## `initialize`
 
 <CodeGroup>

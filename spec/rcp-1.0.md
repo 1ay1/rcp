@@ -488,7 +488,31 @@ run-time registry service; capability negotiation *is* the discovery mechanism.
 
 ## 7. Methods
 
-All methods after `initialize` are gated on the matching capability.
+All methods after `initialize` are gated on the matching capability. The full
+method roster, and the capability that gates each, at a glance:
+
+| Method | Requirement | Capability | Purpose |
+|--------|-------------|------------|---------|
+| `initialize` | **REQUIRED** | — | Negotiate version, exchange capabilities (§7.1). |
+| `info` | **REQUIRED** | — | Report identity + capabilities, no state change (§7.2). |
+| `ping` | **REQUIRED** | — | Liveness / round-trip check (§7.15). |
+| `shutdown` | **REQUIRED** | — | Orderly close; EOF is equivalent (§7.12). |
+| `embed` | optional | `embed` | One dense vector per input (§7.3). |
+| `embed/sparse` | optional | `sparseEmbed` | Learned-sparse term→weight vector (§7.4). |
+| `embed/multi` | optional | `multiVector` | Per-token/patch matrix for late interaction (§7.5). |
+| `rerank` | optional | `rerank` | Rescore candidates precisely (§7.6). |
+| `retrieve` | optional | `retrieve` | **The workhorse** — drive the whole pipeline (§7.7). |
+| `query/transform` | optional | `transform` | Rewrite / expand / decompose a query (§7.8). |
+| `graph` | optional | `graph` | Local / global / DRIFT graph retrieval (§7.9). |
+| `index/add` | optional | `index` (`writable`) | Upsert corpus content (§7.10). |
+| `index/delete` | optional | `index` | Delete corpus content (§7.11). |
+| `catalog/list` | optional | `catalog` | Discover federated engines (§7.13). |
+| `notifications/cancel` | notification | — | Abandon an in-flight request (§7.14). |
+
+Every `optional` method is callable only when the server advertised its gating
+capability at `initialize` (§6); calling an un-advertised one yields `-32003`
+(`CapabilityMissing`), and calling an undefined method yields `-32004`
+(`UnknownMethod`).
 
 ### 7.1 `initialize` — REQUIRED
 

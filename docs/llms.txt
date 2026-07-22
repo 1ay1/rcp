@@ -1,0 +1,78 @@
+# Retrieval Context Protocol (RCP)
+
+> RCP is one open, versioned JSON-RPC 2.0 protocol so any RAG engine — any
+> language, any vendor — can expose embed, rerank, retrieve, graph, index, and
+> catalog, and any client can consume them uniformly. It is the retrieval
+> companion to the Model Context Protocol (tools) and the Agent Client Protocol
+> (agents). The normative spec (`spec/rcp-1.0.md`) and JSON Schema
+> (`schema/rcp-1.0.json`) are the source of truth; these docs are derived.
+
+## Get Started
+
+- [Introduction](https://rcp-6d6ef6d5.mintlify.site/get-started/introduction): What RCP is, why it exists, and a plain-language RAG primer.
+- [Architecture](https://rcp-6d6ef6d5.mintlify.site/get-started/architecture): Client/server roles, transports, and how a call flows.
+- [Quickstart](https://rcp-6d6ef6d5.mintlify.site/get-started/quickstart): Run an example server + client, then write your own.
+
+## Core Concepts
+
+- [The retrieval pipeline model](https://rcp-6d6ef6d5.mintlify.site/concepts/pipeline): Transform → recall → fuse → rerank → diversify → cite.
+- [Message format](https://rcp-6d6ef6d5.mintlify.site/concepts/message-format): JSON-RPC envelope, `_meta`, content blocks, data types.
+- [Transports](https://rcp-6d6ef6d5.mintlify.site/concepts/transports): stdio (default) and HTTP.
+- [Capabilities](https://rcp-6d6ef6d5.mintlify.site/concepts/capabilities): How servers advertise what they support.
+- [Initialization](https://rcp-6d6ef6d5.mintlify.site/concepts/initialization): Version and capability negotiation.
+- [Errors](https://rcp-6d6ef6d5.mintlify.site/concepts/errors): Error codes, `error.data`, retryability.
+- [Lifecycle](https://rcp-6d6ef6d5.mintlify.site/concepts/lifecycle): Session lifecycle from initialize to shutdown.
+- [Extensibility](https://rcp-6d6ef6d5.mintlify.site/concepts/extensibility): `_meta`, `x-` extensions, and registration policy.
+
+## Methods
+
+- [Methods overview](https://rcp-6d6ef6d5.mintlify.site/methods/overview): The full method catalog at a glance.
+- [Embedding](https://rcp-6d6ef6d5.mintlify.site/methods/embed): `embed`, `embed/sparse`, `embed/multi`.
+- [Rerank](https://rcp-6d6ef6d5.mintlify.site/methods/rerank): Cross-encoder and late-interaction (ColBERT) reranking.
+- [Retrieve](https://rcp-6d6ef6d5.mintlify.site/methods/retrieve): The workhorse — one call drives the whole pipeline.
+- [Query transform](https://rcp-6d6ef6d5.mintlify.site/methods/query-transform): Rewrite, expand, decompose queries.
+- [Graph](https://rcp-6d6ef6d5.mintlify.site/methods/graph): Knowledge-graph retrieval.
+- [Index](https://rcp-6d6ef6d5.mintlify.site/methods/index): Upsert and delete corpus content.
+- [Catalog](https://rcp-6d6ef6d5.mintlify.site/methods/catalog): Discover corpora and their metadata.
+
+## Features
+
+- [Metadata filtering](https://rcp-6d6ef6d5.mintlify.site/features/metadata-filtering): Structured filter expressions over fields.
+- [Streaming & progress](https://rcp-6d6ef6d5.mintlify.site/features/streaming-progress): Progress tokens and partial hits.
+- [Pagination](https://rcp-6d6ef6d5.mintlify.site/features/pagination): Cursor-based paging over large result sets.
+- [Batching](https://rcp-6d6ef6d5.mintlify.site/features/batching): JSON-RPC batching and inherently-batched array methods.
+- [Federation](https://rcp-6d6ef6d5.mintlify.site/features/federation): Querying every reachable engine and fusing results.
+- [Observability](https://rcp-6d6ef6d5.mintlify.site/features/observability): Log notifications and telemetry.
+
+## Operating a Server
+
+- [Security](https://rcp-6d6ef6d5.mintlify.site/operating/security): Trust boundaries, prompt injection, poisoning, DoS, privacy.
+- [Conformance](https://rcp-6d6ef6d5.mintlify.site/operating/conformance): L0/L1/L2 conformance levels.
+
+## SDKs
+
+- [SDK overview](https://rcp-6d6ef6d5.mintlify.site/sdks/overview): Four wire-compatible reference SDKs.
+- [C++](https://rcp-6d6ef6d5.mintlify.site/sdks/cpp): Header-only, C++23.
+- [Python](https://rcp-6d6ef6d5.mintlify.site/sdks/python): Pure-stdlib.
+- [Node.js](https://rcp-6d6ef6d5.mintlify.site/sdks/node): Pure-stdlib.
+- [Rust](https://rcp-6d6ef6d5.mintlify.site/sdks/rust): `rcp-protocol` crate.
+
+## Reference
+
+- [Specification](https://rcp-6d6ef6d5.mintlify.site/reference/specification): The RCP/1 specification.
+- [Schema](https://rcp-6d6ef6d5.mintlify.site/reference/schema): The normative JSON Schema.
+- [Glossary](https://rcp-6d6ef6d5.mintlify.site/reference/glossary): Retrieval and protocol terms.
+- [Versioning](https://rcp-6d6ef6d5.mintlify.site/reference/versioning): How RCP versions and stays compatible.
+- [Changelog](https://rcp-6d6ef6d5.mintlify.site/reference/changelog): What changed between versions.
+
+## Community
+
+- [Contributing](https://rcp-6d6ef6d5.mintlify.site/community/contributing): How to propose changes and open RFDs.
+- [Governance](https://rcp-6d6ef6d5.mintlify.site/community/governance): How RCP is stewarded and evolves.
+- [Code of Conduct](https://rcp-6d6ef6d5.mintlify.site/community/conduct): Community standards.
+- [Brand](https://rcp-6d6ef6d5.mintlify.site/community/brand): Name, logo, and usage guidelines.
+
+## Optional
+
+- [Ecosystem stack](https://rcp-6d6ef6d5.mintlify.site/ecosystem/stack): Where RCP sits in a modern AI stack.
+- [RCP, MCP & ACP](https://rcp-6d6ef6d5.mintlify.site/ecosystem/mcp-acp): How the three protocols relate.
