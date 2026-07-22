@@ -60,11 +60,17 @@ fetches grounding context over **RCP**:
 
 All three share JSON-RPC framing, an `initialize`/capabilities handshake, `_meta`
 extensibility, and cursor pagination — learn one, you know the shape of all three.
+RCP isn't a competitor to MCP — it's the retrieval sibling. *([Why not just an MCP
+tool?](/ecosystem/mcp-acp#why-retrieval-needs-its-own-protocol))*
 
 <CardGroup cols={2}>
   <Card title="The retrieval pipeline" icon="diagram-project" href="/concepts/pipeline">
     Transform → recall → rerank → diversify → cite, each stage independently
     negotiable behind a single `retrieve` call.
+  </Card>
+  <Card title="Why not just an MCP tool?" icon="circle-question" href="/ecosystem/mcp-acp">
+    Six axes where retrieval outgrows an opaque `search` tool — and how the two
+    protocols compose.
   </Card>
   <Card title="Conformance levels" icon="circle-check" href="/operating/conformance">
     L0 Base, L1 Retrieval, L2 SOTA — with a transport-agnostic test suite that

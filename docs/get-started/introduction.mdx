@@ -12,6 +12,21 @@ base means rewriting glue code. MCP standardised *tools*; ACP standardised
 **RCP is that layer** — a small, versioned, JSON-RPC 2.0 contract that a
 *powerful* engine can fully express and a *thin* client can fully consume.
 
+<Accordion title="Why not just an MCP tool?" icon="circle-question">
+  The obvious objection: *MCP already lets a server expose a `search(query) →
+  documents` tool — why a second protocol?* Because production retrieval is a
+  **pipeline** (recall → fusion → rerank → assemble), not one opaque call. A
+  `tool.call` can't negotiate `candidateK ≥ topN ≥ k`, expose per-stage `scores`,
+  return structured comparable `Hit`s (so nDCG/RRF work across engines), stream
+  staged progress, or carry a per-hit `trust` signal against prompt injection —
+  it flattens all of that into a text blob.
+
+  If your need really is one opaque `query → text` call, an MCP tool **is** the
+  right tool — and the two **compose** (a gateway can expose RCP `retrieve` *as*
+  an MCP tool). See the full six-axis argument in
+  [RCP, MCP & ACP](/ecosystem/mcp-acp#why-retrieval-needs-its-own-protocol).
+</Accordion>
+
 <Accordion title="New to retrieval or RAG? Start here" icon="seedling">
   **Retrieval-augmented generation (RAG)** grounds a language model in *your*
   data instead of relying only on what it memorised in training. The loop is
