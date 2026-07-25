@@ -29,6 +29,16 @@ import {
 
 const KNOWN_METHODS = new Set(Object.keys(CAP_FOR_METHOD));
 
+// §4.6: NaN/±Infinity are not valid JSON and MUST NOT be emitted; a server that
+// would produce them MUST substitute a finite sentinel. JSON.stringify would
+// silently coerce them to null — the spec requires a finite value, so we scrub
+// non-finite numbers to 0.0 (finite, neutral) at every serialization edge.
+function safeDump(value) {
+  return JSON.stringify(value, (_key, v) =>
+    typeof v === "number" && !Number.isFinite(v) ? 0 : v
+  );
+}
+
 function ok(id, result) {
   return { jsonrpc: "2.0", id, result };
 }
@@ -44,7 +54,7 @@ function err(id, code, message, data = null) {
 export function makeLogNotification(level, message, data = null) {
   const params = { level, message };
   if (data !== null && data !== undefined) params.data = data;
-  return JSON.stringify({ jsonrpc: "2.0", method: Method.LOG, params });
+  return safeDump({ jsonrpc: "2.0", method: Method.LOG, params });
 }
 
 // Build a `notifications/progress` frame (spec §9) during a long retrieve.
@@ -53,7 +63,7 @@ export function makeProgressNotification(token, progress, stage = "", partial = 
   const params = { progressToken: token, progress };
   if (stage) params.stage = stage;
   if (partial !== null && partial !== undefined) params.partial = partial;
-  return JSON.stringify({ jsonrpc: "2.0", method: Method.PROGRESS, params });
+  return safeDump({ jsonrpc: "2.0", method: Method.PROGRESS, params });
 }
 
 // Count-like params that share one rule across every method (spec §4.6/§7.7): a
@@ -152,6 +162,12 @@ export class Server {
     if (!("id" in request)) return null;
 
     if (m === Method.INITIALIZE) {
+      // §13: after a SUCCESSFUL handshake a second `initialize` MUST be rejected
+      // with -32600 — re-negotiating mid-session would silently invalidate
+      // every capability the client has cached. A repeat BEFORE any success
+      // (retry after -32002) is still allowed.
+      if (this._initialized)
+        return err(id, Errc.INVALID_REQUEST, "already initialized; re-negotiation is not permitted mid-session");
       const peer = params && typeof params === "object" ? params.protocolVersion ?? PROTOCOL_VERSION : PROTOCOL_VERSION;
       const neg = negotiateVersion(peer);
       if (neg < MIN_PROTOCOL_VERSION) return err(id, Errc.VERSION_MISMATCH, "no common version");
@@ -210,19 +226,19 @@ export class Server {
     try {
       msg = JSON.parse(line);
     } catch (e) {
-      return JSON.stringify(err(null, Errc.PARSE_ERROR, e.message));
+      return safeDump(err(null, Errc.PARSE_ERROR, e.message));
     }
     if (Array.isArray(msg)) {
-      if (msg.length === 0) return JSON.stringify(err(null, Errc.INVALID_REQUEST, "empty batch"));
+      if (msg.length === 0) return safeDump(err(null, Errc.INVALID_REQUEST, "empty batch"));
       const out = [];
       for (const el of msg) {
         const reply = await this.handle(el);
         if (reply !== null && reply !== undefined) out.push(reply);
       }
-      return out.length ? JSON.stringify(out) : "";
+      return out.length ? safeDump(out) : "";
     }
     const reply = await this.handle(msg);
-    return reply === null || reply === undefined ? "" : JSON.stringify(reply);
+    return reply === null || reply === undefined ? "" : safeDump(reply);
   }
 
   _infoResult(version) {
@@ -275,7 +291,7 @@ export class Server {
           try {
             reply = await this.handleLine(text);
           } catch (e) {
-            reply = JSON.stringify(err(null, Errc.INTERNAL_ERROR, String(e && e.message ? e.message : e)));
+            reply = safeDump(err(null, Errc.INTERNAL_ERROR, String(e && e.message ? e.message : e)));
           }
           if (reply) {
             const payload = Buffer.from(reply, "utf8");

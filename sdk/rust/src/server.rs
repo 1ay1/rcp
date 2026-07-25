@@ -162,6 +162,17 @@ impl Server {
 
         match method.as_str() {
             Method::INITIALIZE => {
+                // §13: after a SUCCESSFUL handshake a second `initialize` MUST
+                // be rejected with -32600 — re-negotiating mid-session would
+                // silently invalidate every capability the client has cached. A
+                // repeat BEFORE any success (retry after -32002) is allowed.
+                if self.initialized {
+                    return Some(err(
+                        &id,
+                        Errc::INVALID_REQUEST,
+                        "already initialized; re-negotiation is not permitted mid-session",
+                    ));
+                }
                 let peer = params
                     .get("protocolVersion")
                     .and_then(|v| v.as_i64())

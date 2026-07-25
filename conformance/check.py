@@ -166,6 +166,14 @@ def run(t, emit_json=False):
           any(k in caps for k in ("embed", "rerank", "retrieve", "graph")), str(caps))
     check("L0", "server identity present", bool(res.get("server", {}).get("name")))
 
+    # §13: after a SUCCESSFUL initialize, a SECOND initialize MUST be rejected
+    # with -32600 — re-negotiating mid-session would silently invalidate every
+    # capability the client has already cached.
+    r = t.raw({"jsonrpc": "2.0", "id": "reinit", "method": Method.INITIALIZE,
+               "params": {"protocolVersion": 1, "client": {"name": "conf", "version": "1"}, "capabilities": {}}})
+    check("L0", "repeated initialize after success rejected with -32600",
+          r.get("error", {}).get("code") == Errc.INVALID_REQUEST, str(r)[:200])
+
     # §14: the server's self-declared level must not exceed what it can prove.
     declared = (res.get("_meta", {}) or {}).get("conformance")
 

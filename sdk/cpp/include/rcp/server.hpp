@@ -15,6 +15,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <cmath>
 
 #include "rcp/protocol.hpp"
 #include "rcp/types.hpp"
@@ -28,6 +29,35 @@
 
 namespace rcp {
 
+// §4.6: NaN and ±Infinity are NOT valid JSON and MUST NOT be emitted; a server
+// that would produce them MUST substitute a finite sentinel. We recursively
+// walk any outbound value and replace every non-finite number with 0.0 (a
+// finite, neutral score) so a stray NaN from a scorer can never corrupt the
+// wire or throw from nlohmann's dump(). Called once at each serialization edge.
+inline void sanitize_nonfinite(Json& j) {
+    switch (j.type()) {
+        case Json::value_t::number_float: {
+            double d = j.get<double>();
+            if (!std::isfinite(d)) j = 0.0;
+            return;
+        }
+        case Json::value_t::array:
+            for (auto& e : j) sanitize_nonfinite(e);
+            return;
+        case Json::value_t::object:
+            for (auto& [k, v] : j.items()) sanitize_nonfinite(v);
+            return;
+        default:
+            return;
+    }
+}
+
+// Serialize an outbound frame after scrubbing non-finite numbers (§4.6).
+[[nodiscard]] inline std::string safe_dump(Json j) {
+    sanitize_nonfinite(j);
+    return j.dump();
+}
+
 // Build a `log` notification (spec §17.1) for a server to emit on stdout. Level
 // is one of debug|info|notice|warning|error. Returns the compact JSON line
 // (caller appends the trailing newline and writes it to the protocol stream).
@@ -36,7 +66,7 @@ namespace rcp {
                                                        Json data = Json(nullptr)) {
     Json p = Json{{"level", level}, {"message", message}};
     if (!data.is_null()) p["data"] = std::move(data);
-    return Json{{"jsonrpc", "2.0"}, {"method", method::Log}, {"params", std::move(p)}}.dump();
+    return safe_dump(Json{{"jsonrpc", "2.0"}, {"method", method::Log}, {"params", std::move(p)}});
 }
 
 // Build a `notifications/progress` frame (spec §9) for a server to emit during a
@@ -48,7 +78,7 @@ namespace rcp {
     Json p = Json{{"progressToken", token}, {"progress", progress}};
     if (!stage.empty())      p["stage"]   = stage;
     if (!partial.is_null())  p["partial"] = std::move(partial);
-    return Json{{"jsonrpc", "2.0"}, {"method", method::Progress}, {"params", std::move(p)}}.dump();
+    return safe_dump(Json{{"jsonrpc", "2.0"}, {"method", method::Progress}, {"params", std::move(p)}});
 }
 
 // ── Handler concept ──────────────────────────────────────────────────────────
@@ -100,6 +130,12 @@ public:
         if (!request.contains("id")) return Json(nullptr);
 
         if (m == method::Initialize) {
+            // §13: after a SUCCESSFUL handshake, a second `initialize` MUST be
+            // rejected with -32600 — re-negotiating mid-session would silently
+            // invalidate every capability the client has already cached. A
+            // repeat BEFORE any success (e.g. retry after a version mismatch)
+            // is still allowed and falls through to normal negotiation.
+            if (initialized_) return err(id, errc::InvalidRequest, "already initialized; re-negotiation is not permitted mid-session");
             int neg = negotiate_version(params.value("protocolVersion", kProtocolVersion));
             if (neg < kMinProtocolVersion) return err(id, errc::VersionMismatch, "no common version");
             // §7.1: the session is initialized only on a SUCCESSFUL handshake.
@@ -134,23 +170,23 @@ public:
     [[nodiscard]] std::string handle_line(const std::string& line) {
         Json msg;
         try { msg = Json::parse(line); }
-        catch (const std::exception& e) { return err(Json(nullptr), errc::ParseError, e.what()).dump(); }
+        catch (const std::exception& e) { return safe_dump(err(Json(nullptr), errc::ParseError, e.what())); }
 
         // JSON-RPC batch (spec §11): one response per *request*; notifications
         // contribute nothing; an all-notification batch yields no output.
         if (msg.is_array()) {
-            if (msg.empty()) return err(Json(nullptr), errc::InvalidRequest, "empty batch").dump();
+            if (msg.empty()) return safe_dump(err(Json(nullptr), errc::InvalidRequest, "empty batch"));
             Json out = Json::array();
             for (const auto& el : msg) {
                 Json reply = handle(el);
                 if (!reply.is_null()) out.push_back(std::move(reply));
             }
-            return out.empty() ? std::string{} : out.dump();
+            return out.empty() ? std::string{} : safe_dump(out);
         }
 
         Json reply = handle(msg);
         if (reply.is_null()) return std::string{};   // notification: no response
-        return reply.dump();
+        return safe_dump(reply);
     }
 
     // Loop over partial writes; returns false on error (e.g. EPIPE) so callers

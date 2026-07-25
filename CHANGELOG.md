@@ -18,6 +18,22 @@ and SDKs into a working demonstration of the SOTA the spec describes. Additive;
 no wire change.
 
 ### Added
+- **Repeated-`initialize` rejection (§13), across all four SDKs.** After a
+  *successful* handshake, a second `initialize` is now rejected with `-32600`
+  (`InvalidRequest`) in the C++, Python, Node.js, and Rust servers —
+  re-negotiating mid-session would silently invalidate every capability the
+  client has already cached. A repeat *before* any success (a legitimate retry
+  after a `-32002` version mismatch) is still accepted. `conformance/check.py`
+  gained an L0 check for this MUST; green against all reference servers and the
+  rag-cpp server.
+- **Non-finite JSON substitution (§4.6), across all four SDKs.** Every outbound
+  frame is now scrubbed at the serialization edge so a stray `NaN`/`±Infinity`
+  (e.g. from a degenerate scorer) can never reach the wire: C++ (`safe_dump` /
+  `sanitize_nonfinite`), Python (`_scrub_nonfinite` + `allow_nan=False`), and
+  Node.js (a `JSON.stringify` replacer) substitute a finite `0.0`; Rust already
+  guarded this in its serializer. Previously nlohmann's `dump()` would *throw*
+  and Python's `json.dumps` / JS's `JSON.stringify` would emit invalid or
+  lossy output.
 - **Index-write conformance checks** (§7.10/§7.11). `conformance/check.py` now
   verifies, for any server advertising `index.writable`, the normative write
   MUSTs: `index/add` returns positional `ids` (one per input document),

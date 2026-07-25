@@ -18,6 +18,7 @@ Dispatch rules replicated exactly:
 from __future__ import annotations
 
 import json
+import math
 import socket
 
 from ._types import (
@@ -36,8 +37,23 @@ _COMPACT = (",", ":")
 _KNOWN_METHODS = set(CAP_FOR_METHOD)
 
 
+def _scrub_nonfinite(obj):
+    """§4.6: NaN/±Infinity are not valid JSON and MUST NOT be emitted; a server
+    that would produce them MUST substitute a finite sentinel. Recursively
+    replace every non-finite float with 0.0 (finite, neutral) before dumping."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else 0.0
+    if isinstance(obj, dict):
+        return {k: _scrub_nonfinite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_scrub_nonfinite(v) for v in obj]
+    return obj
+
+
 def _dumps(obj) -> str:
-    return json.dumps(obj, separators=_COMPACT)
+    # allow_nan=False turns any stray non-finite that slips past the scrub into
+    # a hard error rather than an invalid-JSON token silently on the wire.
+    return json.dumps(_scrub_nonfinite(obj), separators=_COMPACT, allow_nan=False)
 
 
 def _ok(id_, result) -> dict:
@@ -216,6 +232,13 @@ class Server:
             return None
 
         if m == Method.INITIALIZE:
+            # §13: after a SUCCESSFUL handshake a second `initialize` MUST be
+            # rejected with -32600 — re-negotiating mid-session would silently
+            # invalidate every capability the client has cached. A repeat
+            # BEFORE any success (retry after -32002) is still allowed.
+            if self._initialized:
+                return _err(id_, Errc.INVALID_REQUEST,
+                            "already initialized; re-negotiation is not permitted mid-session")
             neg = negotiate_version(params.get("protocolVersion", PROTOCOL_VERSION)
                                     if isinstance(params, dict) else PROTOCOL_VERSION)
             if neg < MIN_PROTOCOL_VERSION:
