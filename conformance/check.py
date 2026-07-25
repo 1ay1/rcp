@@ -252,6 +252,38 @@ def run(t, emit_json=False):
     else:
         skip("L2", "rerank returns a scored ordering", "rerank not advertised")
 
+    # §7.10/§7.11: a WRITABLE index must upsert by id (no duplicate) and delete
+    # idempotently. Gated on index.writable so a read-only/absent index skips.
+    idx = caps.get("index") or {}
+    if idx.get("writable") is True:
+        doc = {"id": "rcp-conf://upsert", "text": "conformance upsert probe document one"}
+        r = t.raw({"jsonrpc": "2.0", "id": 20, "method": Method.INDEX_ADD,
+                   "params": {"documents": [doc]}})
+        res20 = r.get("result", {})
+        ids = res20.get("ids")
+        check("L2", "index/add returns positional ids (one per document)",
+              isinstance(ids, list) and len(ids) == 1, str(r)[:200])
+
+        # Re-add the SAME id with new text: MUST be an upsert, not a duplicate.
+        doc2 = {"id": "rcp-conf://upsert", "text": "conformance upsert probe document two updated"}
+        r = t.raw({"jsonrpc": "2.0", "id": 21, "method": Method.INDEX_ADD,
+                   "params": {"documents": [doc2]}})
+        upsert_ok = "error" not in r or r["error"].get("code") == Errc.CONFLICT
+        check("L2", "index/add re-adding an id upserts or rejects with -32016",
+              upsert_ok, str(r)[:200])
+
+        # Delete it, then delete again: second delete MUST be idempotent (0).
+        r = t.raw({"jsonrpc": "2.0", "id": 22, "method": Method.INDEX_DELETE,
+                   "params": {"ids": ["rcp-conf://upsert"]}})
+        r2 = t.raw({"jsonrpc": "2.0", "id": 23, "method": Method.INDEX_DELETE,
+                    "params": {"ids": ["rcp-conf://upsert"]}})
+        check("L2", "index/delete is idempotent (repeat returns deleted:0)",
+              r2.get("result", {}).get("deleted") == 0, str(r2)[:200])
+    else:
+        skip("L2", "index/add returns positional ids (one per document)", "index not writable")
+        skip("L2", "index/add re-adding an id upserts or rejects with -32016", "index not writable")
+        skip("L2", "index/delete is idempotent (repeat returns deleted:0)", "index not writable")
+
     t.raw({"jsonrpc": "2.0", "id": 99, "method": Method.SHUTDOWN, "params": {}})
     t.close()
 

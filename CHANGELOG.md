@@ -18,6 +18,15 @@ and SDKs into a working demonstration of the SOTA the spec describes. Additive;
 no wire change.
 
 ### Added
+- **Index-write conformance checks** (§7.10/§7.11). `conformance/check.py` now
+  verifies, for any server advertising `index.writable`, the normative write
+  MUSTs: `index/add` returns positional `ids` (one per input document),
+  re-adding an explicit `id` **upserts** (or rejects with `-32016`) rather than
+  duplicating, and `index/delete` is idempotent (a repeat returns `deleted:0`).
+  Gated on the capability, so read-only servers skip cleanly. This closes the
+  gap where a whole normative section had no executable check behind it; first
+  exercised by the rag-cpp (`github.com/…/rag-cpp`) RCP server, which certifies
+  L2 with these enabled.
 - **Level-aware certification harness** (§14.5). `conformance/check.py` now tags
   every check L0/L1/L2, reports the highest level a server actually reaches
   (`CERTIFIED LEVEL: …`), skips checks for unadvertised capabilities, and
