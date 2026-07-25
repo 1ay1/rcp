@@ -122,6 +122,18 @@ node examples/example_client.js            # drives the example server
 node test.js                               # smoke test incl. Node client ↔ C++ server
 ```
 
+## Federation fusion & the vector codec
+
+The reference Reciprocal Rank Fusion (spec §16.3, deterministic tie-break +
+origin tags) and the compact `f32-base64` embedding codec (§7.3.1) ship here too,
+byte-for-byte identical to the Python / Rust / C++ SDKs:
+
+```js
+const fused = rcp.rrfFuse({ dense, sparse }, { k: 10, weights: { dense: 1, sparse: 0.7 } });
+const { payload, meta } = rcp.encodeVectors(vectors, rcp.F32_BASE64);
+const back = rcp.decodeVectors(payload, meta.encoding, meta.dimension);
+```
+
 ## License
 
 MIT © 2026 Ayush Bhat.

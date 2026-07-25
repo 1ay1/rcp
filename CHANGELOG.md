@@ -30,6 +30,26 @@ no wire change.
   no adopter re-derives it. Verified against a hand computation.
 - `Server.set_conformance("L0"|"L1"|"L2")` in the Python SDK, surfaced as
   `_meta.conformance` in `initialize`/`info` (§14).
+- **Cross-SDK fusion + codec parity.** The reference RRF / weighted fusion and
+  the `f32-base64` vector codec now exist in **all four SDKs** — Python
+  (`rcp.rrf_fuse` / `rcp.weighted_fuse` / `rcp.encode_vectors`), Node.js
+  (`rrfFuse` / `weightedFuse` / `encodeVectors`), Rust (`rcp::fusion` /
+  `rcp::vectors`), and C++ (`rcp::fusion` / `rcp::vectors`) — each unit-tested
+  and byte-for-byte identical (same deterministic §16.3 tie-break, richest-body
+  dedup, little-endian base64). The C++ live `Federation` now delegates to the
+  standalone `rcp::fusion::rrf_fuse`, so one algorithm serves both paths.
+- **Streaming (SSE) transport, end to end** (§9/§13). The Python `Server` gained
+  `stream(method, generator)` and a `Progress` frame type: a handler `yield`s
+  progress events and `return`s the final result, and `serve_http` now honours
+  `Accept: text/event-stream` by emitting `notifications/progress` frames
+  followed by one final response frame over a single connection. The same
+  handler answers a plain unary POST with a single buffered response, exactly as
+  §13 requires.
+- **Runnable examples.** `examples/example_streaming.py` starts a real HTTP+SSE
+  server and watches a 3-stage retrieve funnel fill live; `examples/example_federation.py`
+  is a **one-command** demo that spawns two independent engine subprocesses,
+  fans a query out to both, and fuses their rankings with `rcp.rrf_fuse` (origin
+  tags + per-engine weights) — spec §16 made executable.
 
 ### Changed
 - **The reference server is now a real hybrid pipeline.** `examples/example_server.py`

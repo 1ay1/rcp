@@ -36,11 +36,13 @@
 
 mod client;
 pub mod filter;
+pub mod fusion;
 mod json;
 mod selector;
 mod server;
 mod transport;
 mod types;
+pub mod vectors;
 
 pub use client::{Client, Hit, SearchResult};
 pub use filter::Filter;

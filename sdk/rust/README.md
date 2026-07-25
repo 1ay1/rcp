@@ -121,6 +121,22 @@ cargo run --example example_client            # drives the example server
 cargo test                                    # incl. Rust client <-> C++ server
 ```
 
+## Federation fusion & the vector codec
+
+The reference Reciprocal Rank Fusion (spec §16.3) and the compact `f32-base64`
+embedding codec (§7.3.1) are standalone, tested modules — byte-for-byte identical
+to the Python / Node / C++ SDKs:
+
+```rust
+use rcp::{fusion, vectors, obj};
+let a = vec![obj(&[("id", "x".into())])];
+let b = vec![obj(&[("id", "x".into())]), obj(&[("id", "y".into())])];
+let fused = fusion::rrf_fuse(&[("A", &a), ("B", &b)], Some(10), fusion::RRF_K_DEFAULT);
+
+let enc = vectors::encode_f32_base64(&[1.5, -2.25, 0.0]);
+let back = vectors::decode_f32_base64(&[enc], Some(3))?;
+```
+
 ## The JSON value type
 
 `rcp::Json` is a small, ordered JSON value with `parse`, `Display`/`dump`,

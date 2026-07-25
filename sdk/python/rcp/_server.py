@@ -60,6 +60,20 @@ def make_log_notification(level: str, message: str, data=None) -> str:
     return _dumps({"jsonrpc": "2.0", "method": Method.LOG, "params": params})
 
 
+class Progress:
+    """A streaming progress event yielded by a :meth:`Server.stream` handler
+    (spec §9). ``progress`` is 0..1; ``stage`` names the pipeline phase; optional
+    ``partial`` carries early hits. Serialised into a ``notifications/progress``
+    frame carrying the request's ``progressToken``."""
+
+    __slots__ = ("progress", "stage", "partial")
+
+    def __init__(self, progress: float, stage: str = "", partial=None):
+        self.progress = progress
+        self.stage = stage
+        self.partial = partial
+
+
 def make_progress_notification(token, progress: float, stage: str = "", partial=None) -> str:
     """Build a ``notifications/progress`` frame (spec §9) during a long retrieve.
     ``token`` echoes the request's ``_meta.progressToken``; ``progress`` is 0..1."""
@@ -124,6 +138,7 @@ class Server:
         self._info = {"name": "unknown", "version": "0"}
         self._caps: dict = {}          # wire JSON key -> metadata object
         self._handlers: dict = {}      # method string -> callable(params) -> result
+        self._streamers: dict = {}     # method string -> generator(params) -> progress.., result
         self._initialized = False
         self._negotiated = PROTOCOL_VERSION   # version agreed at handshake (§7.1)
 
@@ -161,7 +176,29 @@ class Server:
         self._handlers[name] = fn
         return fn
 
-    # ── dispatch ─────────────────────────────────────────────────────────────
+    def stream(self, method, fn=None):
+        r"""Register a STREAMING handler for ``method`` (spec §13 SSE transport).
+
+        The handler is a generator: it ``yield``s zero or more :class:`Progress`
+        objects (emitted as ``notifications/progress`` frames) and then
+        ``return``\ s the final result object. Over an SSE request each progress
+        frame is flushed as it is produced, followed by one final response
+        frame; over a plain unary request the progress frames are drained and
+        only the final result is returned, so the same handler works both ways.
+        Requires the ``streaming`` capability to be advertised.
+        """
+        name = method.value if isinstance(method, Capability) else str(method)
+        if name not in _KNOWN_METHODS:
+            raise ValueError(f"unknown method hook: {name!r}")
+        if fn is None:
+            def deco(f):
+                self._streamers[name] = f
+                return f
+            return deco
+        self._streamers[name] = fn
+        return fn
+
+    # ── dispatch ─────────────────────────────────────────────────────────────────
     def handle(self, request):
         """Handle one JSON-RPC request object → reply dict, or ``None`` for a
         notification that warrants no response. Never raises."""
@@ -215,6 +252,11 @@ class Server:
         if cap is None:
             return _err(id_, Errc.UNKNOWN_METHOD, f"unknown method '{m}'")
         fn = self._handlers.get(m)
+        if fn is None and m in self._streamers:
+            # A streaming-only handler still answers a plain unary request: drain
+            # its progress frames and return just the final result (spec §13 —
+            # a non-SSE client MUST get a single buffered JSON response).
+            fn = self._make_unary_from_stream(self._streamers[m])
         if fn is None:
             return _err(id_, Errc.CAPABILITY_MISSING, f"'{m}' not implemented")
         if self._caps.get(cap.value) is None:
@@ -231,6 +273,20 @@ class Server:
         except Exception as e:  # a handler bug is an Internal error, never a crash
             return _err(id_, Errc.INTERNAL_ERROR, str(e))
         return _ok(id_, result if result is not None else {})
+
+    @staticmethod
+    def _make_unary_from_stream(gen_fn):
+        """Wrap a generator streaming handler as a plain unary handler: run it to
+        completion, discard the progress frames, and return its final result
+        (the generator's ``return`` value, surfaced via StopIteration.value)."""
+        def unary(params):
+            gen = gen_fn(params)
+            try:
+                while True:
+                    next(gen)
+            except StopIteration as stop:
+                return stop.value if stop.value is not None else {}
+        return unary
 
     def handle_line(self, line: str) -> str:
         """Parse a JSON line, dispatch (single or batch), and return the reply
@@ -319,13 +375,17 @@ class Server:
             buf += chunk
         head, _, rest = buf.partition(b"\r\n\r\n")
         length = 0
+        accept = b""
         for hl in head.split(b"\r\n")[1:]:
             name, _, value = hl.partition(b":")
-            if name.strip().lower() == b"content-length":
+            key = name.strip().lower()
+            if key == b"content-length":
                 try:
                     length = int(value.strip())
                 except ValueError:
                     length = 0
+            elif key == b"accept":
+                accept = value.strip().lower()
         body = rest
         while len(body) < length:
             chunk = conn.recv(4096)
@@ -335,6 +395,13 @@ class Server:
         text = body[:length].decode("utf-8", "replace") if length else (body.decode("utf-8", "replace") or "{}")
         if not text.strip():
             text = "{}"
+
+        # §13 SSE: if the client asked for text/event-stream, we advertised
+        # `streaming`, and the request targets a registered streaming handler,
+        # stream progress frames then the final response frame. Else buffer.
+        if b"text/event-stream" in accept and self._try_serve_sse(conn, text):
+            return
+
         reply = self.handle_line(text)
         if reply:
             payload = reply.encode("utf-8")
@@ -346,3 +413,54 @@ class Server:
             resp = (b"HTTP/1.1 204 No Content\r\n"
                     b"Connection: close\r\n\r\n")
         conn.sendall(resp)
+
+    def _try_serve_sse(self, conn: socket.socket, text: str) -> bool:
+        """Attempt to serve *text* as an SSE stream. Returns True if it was
+        handled as a stream (headers + frames written), False if the request is
+        not eligible (caller then falls back to a buffered JSON response)."""
+        try:
+            req = json.loads(text)
+        except ValueError:
+            return False
+        if not isinstance(req, dict):
+            return False
+        method = req.get("method")
+        if method not in self._streamers:
+            return False
+        if self._caps.get(Capability.Streaming.value) is None:
+            return False
+        if not self._initialized and CAP_FOR_METHOD.get(method) is not None:
+            return False
+        params = req.get("params") or {}
+        token = None
+        meta = params.get("_meta") if isinstance(params, dict) else None
+        if isinstance(meta, dict):
+            token = meta.get("progressToken")
+
+        conn.sendall(b"HTTP/1.1 200 OK\r\n"
+                     b"Content-Type: text/event-stream\r\n"
+                     b"Cache-Control: no-cache\r\n"
+                     b"Connection: close\r\n\r\n")
+
+        def frame(obj) -> bytes:
+            return b"data: " + _dumps(obj).encode("utf-8") + b"\n\n"
+
+        gen = self._streamers[method](params)
+        result = {}
+        try:
+            while True:
+                try:
+                    ev = next(gen)
+                except StopIteration as stop:
+                    result = stop.value if stop.value is not None else {}
+                    break
+                if isinstance(ev, Progress) and token is not None:
+                    n = make_progress_notification(token, ev.progress, ev.stage, ev.partial)
+                    conn.sendall(b"data: " + n.encode("utf-8") + b"\n\n")
+            reply = _ok(req.get("id"), result)
+        except RcpError as e:
+            reply = _err(req.get("id"), e.code, str(e), getattr(e, "data", None))
+        except Exception as e:  # noqa: BLE001 — total: never crash the connection
+            reply = _err(req.get("id"), Errc.INTERNAL_ERROR, str(e))
+        conn.sendall(frame(reply))
+        return True

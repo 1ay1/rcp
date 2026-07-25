@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "rcp/client.hpp"
+#include "rcp/fusion.hpp"
 #include "rcp/protocol.hpp"
 #include "rcp/selector.hpp"
 #include "rcp/types.hpp"
@@ -160,45 +161,20 @@ public:
     [[nodiscard]] const Engine& operator[](std::size_t i) const { return engines_[i]; }
 
 private:
-    // Reciprocal Rank Fusion (§16.3). Document identity = stringified Hit.id.
+    // Reciprocal Rank Fusion (§16.3), delegated to the standalone, spec-exact
+    // implementation in rcp/fusion.hpp — one source of truth, so the live
+    // Federation and a manual fuse of held lists agree byte-for-byte (full
+    // deterministic tie-break + richest-body dedup included).
     [[nodiscard]] Result<std::vector<Hit>>
     fuse_rrf(const std::vector<std::pair<std::size_t, std::vector<Hit>>>& lists,
              std::size_t want, const FusionConfig& fc) {
-        struct Acc { double rrf = 0.0; Hit hit; std::string engine; };
-        std::unordered_map<std::string, Acc> acc;
-
+        std::vector<fusion::EngineList> engine_lists;
+        engine_lists.reserve(lists.size());
         for (const auto& [engine_idx, hits] : lists) {
-            const double w = engines_[engine_idx].weight;
-            const std::string& eid = engines_[engine_idx].id;
-            for (std::size_t rank = 0; rank < hits.size(); ++rank) {
-                const Hit& h = hits[rank];
-                double contrib = w / (fc.rrf_k + static_cast<double>(rank + 1));
-                auto it = acc.find(h.id);
-                if (it == acc.end()) {
-                    Acc a; a.rrf = contrib; a.hit = h; a.engine = eid;
-                    acc.emplace(h.id, std::move(a));
-                } else {
-                    it->second.rrf += contrib;
-                }
-            }
+            engine_lists.push_back(fusion::EngineList{
+                engines_[engine_idx].id, hits, engines_[engine_idx].weight});
         }
-
-        std::vector<Acc> merged;
-        merged.reserve(acc.size());
-        for (auto& [id, a] : acc) merged.push_back(std::move(a));
-        std::sort(merged.begin(), merged.end(),
-                  [](const Acc& a, const Acc& b) { return a.rrf > b.rrf; });
-
-        std::vector<Hit> out;
-        out.reserve(std::min(want, merged.size()));
-        for (std::size_t i = 0; i < merged.size() && i < want; ++i) {
-            Hit h = std::move(merged[i].hit);
-            h.score = Score{merged[i].rrf};      // fused RRF score
-            if (!h.meta.is_object()) h.meta = Json::object();
-            h.meta["engine"] = merged[i].engine; // origin tag (§16.3)
-            out.push_back(std::move(h));
-        }
-        return out;
+        return fusion::rrf_fuse(engine_lists, want, fc.rrf_k);
     }
 
     std::vector<Engine> engines_;

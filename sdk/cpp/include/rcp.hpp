@@ -27,3 +27,5 @@
 #include "rcp/selector.hpp"
 #include "rcp/server.hpp"
 #include "rcp/federation.hpp"
+#include "rcp/fusion.hpp"
+#include "rcp/vectors.hpp"

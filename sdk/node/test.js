@@ -225,9 +225,75 @@ async function testFilter() {
   console.log("filter builder + validator: ok");
 }
 
+function testFusion() {
+  // RRF vs hand-computation. Engines A=[a,b,c], B=[b,d], rrfK=60.
+  //   b = 1/62 (rank2 in A) + 1/61 (rank1 in B),  a = 1/61,  d = 1/62,  c = 1/63.
+  //   0.03252 > 0.01639 > 0.01613 > 0.01587  ->  order [b,a,d,c].
+  const A = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  const B = [{ id: "b" }, { id: "d" }];
+  const fused = rcp.rrfFuse({ A, B }, { rrfK: 60 });
+  assert.deepEqual(fused.map((h) => h.id), ["b", "a", "d", "c"], JSON.stringify(fused));
+  const bScore = 1 / 62 + 1 / 61;
+  assert.ok(Math.abs(fused[0].meta.fusedScore - bScore) < 1e-9, JSON.stringify(fused[0]));
+  assert.equal(fused[0].meta.engine, "A"); // richest/first-seen origin tag
+
+  // k truncates.
+  assert.equal(rcp.rrfFuse({ A, B }, { rrfK: 60, k: 2 }).length, 2);
+
+  // Deterministic tie-break: equal fused score -> id ascending.
+  const tie = rcp.rrfFuse({ X: [{ id: "z" }], Y: [{ id: "a" }] }, { rrfK: 60 });
+  assert.deepEqual(tie.map((h) => h.id), ["a", "z"], JSON.stringify(tie));
+
+  // Weighted fusion with per-engine min-max normalisation.
+  const wf = rcp.weightedFuse(
+    { A: [{ id: "a", score: 10 }, { id: "b", score: 0 }], B: [{ id: "b", score: 5 }] },
+    { weights: { A: 1, B: 1 } },
+  );
+  // A: a->1.0, b->0.0 ; B: b->1.0 (single => norm 1). b=0+1=1 (weightSum 2), a=1
+  // (weightSum 1). Fused equal -> §16.3 breaks on higher weight -> b before a.
+  assert.deepEqual(wf.map((h) => h.id), ["b", "a"], JSON.stringify(wf));
+
+  // Dedup keeps the richest body across engines.
+  const dd = rcp.rrfFuse(
+    { A: [{ id: "d", text: "short" }], B: [{ id: "d", text: "a much longer body" }] },
+    { rrfK: 60 },
+  );
+  assert.equal(dd.length, 1);
+  assert.equal(dd[0].text, "a much longer body", JSON.stringify(dd[0]));
+
+  console.log("fusion (RRF + weighted): ok");
+}
+
+function testVectorCodec() {
+  const vecs = [
+    [1.5, -2.25, 0.0, 3.125],
+    [0.5, 0.5, 0.5, 0.5],
+  ];
+  // json round-trips exactly.
+  const j = rcp.encodeVectors(vecs, rcp.JSON_ENC);
+  assert.deepEqual(rcp.decodeVectors(j.payload), vecs);
+
+  // f32-base64 round-trips within float32 precision, carries dimension meta.
+  const b = rcp.encodeVectors(vecs, rcp.F32_BASE64);
+  assert.equal(b.meta.encoding, "f32-base64");
+  assert.equal(b.meta.dimension, 4);
+  const back = rcp.decodeVectors(b.payload, b.meta.encoding, b.meta.dimension);
+  for (let i = 0; i < vecs.length; i++)
+    for (let k = 0; k < 4; k++) assert.ok(Math.abs(back[i][k] - vecs[i][k]) < 1e-6);
+
+  // Ragged vectors rejected under a binary encoding.
+  assert.throws(() => rcp.encodeVectors([[1, 2], [3]], rcp.F32_BASE64));
+  // Wrong declared dimension rejected on decode.
+  assert.throws(() => rcp.decodeVectors(b.payload, "f32-base64", 8));
+
+  console.log("f32-base64 vector codec: ok");
+}
+
 await testServerInproc();
 await testClientAgainstCppServer();
 await testRegistrySelector();
 await testAgenticSurfaces();
 await testFilter();
+testFusion();
+testVectorCodec();
 console.log("\nall native Node.js SDK checks passed");

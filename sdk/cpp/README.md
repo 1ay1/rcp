@@ -132,6 +132,22 @@ Or via CMake with the examples enabled:
 cmake -S sdk/cpp -B build -DRCP_BUILD_EXAMPLES=ON && cmake --build build
 ```
 
+## Federation fusion & the vector codec
+
+`rcp/fusion.hpp` and `rcp/vectors.hpp` are standalone, header-only, and tested —
+byte-for-byte identical to the Python / Node / Rust SDKs. The live `Federation`
+delegates to the same `rcp::fusion::rrf_fuse`, so held-list fusion and
+fan-out fusion agree exactly:
+
+```cpp
+using rcp::fusion::EngineList;
+std::vector<EngineList> engines = {{"A", a_hits, 1.0}, {"B", b_hits, 0.7}};
+auto fused = rcp::fusion::rrf_fuse(engines, /*k=*/10);
+
+auto blob = rcp::vectors::encode_f32_base64({1.5f, -2.25f, 0.0f});
+auto back = rcp::vectors::decode_f32_base64(blob, /*dimension=*/3);
+```
+
 ## License
 
 MIT © 2026 Ayush Bhat.

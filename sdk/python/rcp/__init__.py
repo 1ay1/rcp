@@ -33,7 +33,7 @@ Server (expose a Python RAG engine as an RCP server):
 from ._client import Client
 from . import _filter as filter  # noqa: A004 — public submodule `rcp.filter`
 from ._selector import EngineSpec, Selector
-from ._server import Server, make_log_notification, make_progress_notification
+from ._server import Progress, Server, make_log_notification, make_progress_notification
 from ._transport import HttpTransport, StdioTransport
 from ._vectors import decode_vectors, encode_vectors
 from ._fusion import RRF_K_DEFAULT, rrf_fuse, weighted_fuse
@@ -49,7 +49,7 @@ from ._types import (
 __all__ = [
     "Client", "Server", "Selector", "EngineSpec", "Capability", "PROTOCOL_VERSION",
     "Method", "Errc", "RcpError", "connect_stdio", "connect_http",
-    "make_log_notification", "make_progress_notification",
+    "make_log_notification", "make_progress_notification", "Progress",
     "StdioTransport", "HttpTransport", "negotiate_version", "filter",
     "encode_vectors", "decode_vectors",
     "rrf_fuse", "weighted_fuse", "RRF_K_DEFAULT",

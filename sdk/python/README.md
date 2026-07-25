@@ -124,12 +124,51 @@ sel = rcp.Selector.loads('''{
 c = sel.select_capable(rcp.Capability.Retrieve)
 ```
 
+## Federation fusion & the vector codec
+
+Merge per-engine ranked lists with the reference Reciprocal Rank Fusion (spec
+§16.3) — deterministic tie-break, richest-body dedup, origin tags in
+`meta.engine`:
+
+```python
+fused = rcp.rrf_fuse({"dense": dense_hits, "sparse": sparse_hits}, k=10,
+                     weights={"dense": 1.0, "sparse": 0.7})
+# or rcp.weighted_fuse(...) when engine scores are comparable
+```
+
+Encode embeddings compactly for the wire (spec §7.3.1, ~4× smaller than JSON
+numbers):
+
+```python
+payload, meta = rcp.encode_vectors(vectors, "f32-base64")
+vectors = rcp.decode_vectors(payload, meta["encoding"], meta["dimension"])
+```
+
+## Streaming (SSE)
+
+A generator handler `yield`s `rcp.Progress` events and `return`s the final
+result; `serve_http` streams `notifications/progress` frames then the response
+over one `text/event-stream` connection (spec §9/§13), and the *same* handler
+answers a plain unary POST:
+
+```python
+def retrieve(params):
+    yield rcp.Progress(0.5, "recall")
+    yield rcp.Progress(1.0, "rerank")
+    return {"hits": hits}
+
+s.advertise(rcp.Capability.Streaming)
+s.stream("retrieve", retrieve)
+```
+
 ## Examples & tests
 
 ```sh
 python3 examples/example_server.py            # stdio (default)
 python3 examples/example_server.py --http 8000
 python3 examples/example_client.py            # drives the example server
+python3 examples/example_streaming.py         # HTTP+SSE progress, end to end
+python3 examples/example_federation.py        # two engines fanned out + RRF-fused
 
 python3 test_bindings.py                      # smoke test incl. Python client ↔ C++ server
 ```

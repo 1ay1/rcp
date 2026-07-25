@@ -39,6 +39,8 @@ export { EngineSpec, Selector } from "./selector.js";
 export { HttpTransport, StdioTransport } from "./transport.js";
 import * as filter from "./filter.js";
 export { filter };
+export { rrfFuse, weightedFuse, RRF_K_DEFAULT } from "./fusion.js";
+export { encodeVectors, decodeVectors, JSON_ENC, F32_BASE64 } from "./vectors.js";
 
 import { Client } from "./client.js";
 

@@ -4,6 +4,7 @@
 #include "rcp.hpp"
 
 #include <cstdio>
+#include <cmath>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -347,6 +348,74 @@ int main() {
             CHECK(!r && r.error().code == errc::InvalidParams);
             CHECK(!r && r.error().data.is_object() && r.error().data.contains("field"));
         }
+    }
+
+    // ── fusion: RRF + weighted, standalone (spec §16.3). ──
+    {
+        auto hit = [](std::string id, double s = 0.0, std::string text = "") {
+            Hit h; h.id = std::move(id); h.score = Score{s}; h.text = std::move(text); return h;
+        };
+        using rcp::fusion::EngineList;
+        // A=[a,b,c], B=[b,d], rrf_k=60. b=1/62+1/61, a=1/61, d=1/62, c=1/63.
+        std::vector<EngineList> engines = {
+            {"A", {hit("a"), hit("b"), hit("c")}, 1.0},
+            {"B", {hit("b"), hit("d")}, 1.0},
+        };
+        auto fused = rcp::fusion::rrf_fuse(engines);
+        CHECK(fused.size() == 4);
+        CHECK(fused[0].id == "b" && fused[1].id == "a" && fused[2].id == "d" && fused[3].id == "c");
+        double bScore = 1.0 / 62.0 + 1.0 / 61.0;
+        CHECK(std::abs(fused[0].meta["fusedScore"].get<double>() - bScore) < 1e-12);
+        CHECK(fused[0].meta["engine"] == "A");
+
+        // k truncates.
+        CHECK(rcp::fusion::rrf_fuse(engines, std::size_t{2}).size() == 2);
+
+        // Deterministic tie-break: equal fused score -> id ascending.
+        std::vector<EngineList> tie = {{"X", {hit("z")}, 1.0}, {"Y", {hit("a")}, 1.0}};
+        auto tf = rcp::fusion::rrf_fuse(tie);
+        CHECK(tf.size() == 2 && tf[0].id == "a" && tf[1].id == "z");
+
+        // Weighted fusion with per-engine min-max normalisation.
+        std::vector<EngineList> we = {
+            {"A", {hit("a", 10.0), hit("b", 0.0)}, 1.0},
+            {"B", {hit("b", 5.0)}, 1.0},
+        };
+        auto wf = rcp::fusion::weighted_fuse(we);
+        // a->1.0, b->0.0+1.0=1.0; fused tie -> higher weight (b, sum 2) first.
+        CHECK(wf.size() == 2 && wf[0].id == "b" && wf[1].id == "a");
+
+        // Dedup keeps the richest body across engines.
+        std::vector<EngineList> dd = {
+            {"A", {hit("d", 0.0, "short")}, 1.0},
+            {"B", {hit("d", 0.0, "a much longer body")}, 1.0},
+        };
+        auto df = rcp::fusion::rrf_fuse(dd);
+        CHECK(df.size() == 1 && df[0].text == "a much longer body");
+    }
+
+    // ── vectors: f32-base64 codec (spec §7.3.1). ──
+    {
+        // Known base64 vectors (interop with every other SDK's codec).
+        CHECK(rcp::vectors::detail::b64_encode(reinterpret_cast<const std::uint8_t*>("foobar"), 6) == "Zm9vYmFy");
+        CHECK(rcp::vectors::detail::b64_encode(reinterpret_cast<const std::uint8_t*>("fo"), 2) == "Zm8=");
+
+        std::vector<float> v = {1.5f, -2.25f, 0.0f, 3.125f};
+        auto blob = rcp::vectors::encode_f32_base64(v);
+        auto back = rcp::vectors::decode_f32_base64(blob, 4);
+        CHECK(back.has_value() && back->size() == 4);
+        if (back) for (std::size_t i = 0; i < 4; ++i) CHECK(std::abs((*back)[i] - v[i]) < 1e-6f);
+
+        // Wrong declared dimension is rejected.
+        CHECK(!rcp::vectors::decode_f32_base64(blob, 8).has_value());
+
+        // Batch encode: ragged vectors rejected, json passes through.
+        auto ragged = rcp::vectors::encode_batch({{1.0f, 2.0f}, {3.0f}}, "f32-base64");
+        CHECK(!ragged.has_value());
+        auto j = rcp::vectors::encode_batch({{1.0f, 2.0f, 3.0f}}, "json");
+        CHECK(j.has_value() && j->is_array() && (*j)[0].size() == 3);
+        auto b = rcp::vectors::encode_batch({{1.0f, 2.0f, 3.0f, 4.0f}}, "f32-base64");
+        CHECK(b.has_value() && (*b)["encoding"] == "f32-base64" && (*b)["dimension"] == 4);
     }
 
     if (g_fail == 0) std::printf("all type + runtime checks passed\n");
