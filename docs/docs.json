@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "maple",
+  "theme": "palm",
   "name": "Retrieval Context Protocol",
   "description": "RCP is one open, versioned JSON-RPC protocol so any RAG engine — any language, any vendor — can expose embed, rerank, retrieve, graph, and index, and any client can consume it uniformly. The retrieval companion to MCP and ACP.",
   "colors": {
