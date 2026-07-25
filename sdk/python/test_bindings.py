@@ -229,10 +229,58 @@ def test_filter():
     print("filter builder + validator: ok")
 
 
+def test_fusion():
+    # RRF matches the hand computation (rrf_k=60), spec §16.3.
+    A = [{"id": "a"}, {"id": "b"}, {"id": "c"}]   # ranks 1,2,3
+    B = [{"id": "b"}, {"id": "d"}]                # ranks 1,2
+    order = [h["id"] for h in rcp.rrf_fuse({"e1": A, "e2": B}, rrf_k=60)]
+    # b=1/61+1/61 > a=1/61 > d=1/62 > c=1/63
+    assert order == ["b", "a", "d", "c"], order
+
+    # k truncation + origin tagging.
+    top2 = rcp.rrf_fuse({"e1": A, "e2": B}, k=2)
+    assert [h["id"] for h in top2] == ["b", "a"]
+    assert top2[0]["meta"]["engine"] in ("e1", "e2")
+    assert "fusedScore" in top2[0]["meta"]
+
+    # Deterministic tie-break: equal fused scores -> id ascending.
+    tie = rcp.rrf_fuse({"e1": [{"id": "y"}], "e2": [{"id": "x"}]})
+    assert [h["id"] for h in tie] == ["x", "y"], tie
+
+    # Weighted fusion normalises per engine before summing.
+    wa = [{"id": "a", "score": 10}, {"id": "b", "score": 5}]  # a->1, b->0
+    wb = [{"id": "b", "score": 8}, {"id": "c", "score": 2}]   # b->1, c->0
+    worder = [h["id"] for h in rcp.weighted_fuse({"e1": wa, "e2": wb})]
+    assert worder[0] in ("a", "b") and "c" == worder[-1], worder
+
+    # Dedup keeps the richest body across engines.
+    rich = rcp.rrf_fuse({"e1": [{"id": "x", "text": "short"}],
+                         "e2": [{"id": "x", "text": "a much longer body"}]})
+    assert rich[0]["text"] == "a much longer body"
+    print("federation fusion (RRF + weighted): ok")
+
+
+def test_vector_codec():
+    v = [[1.0, 2.0, 3.5], [0.5, -1.0, 2.25]]
+    enc, meta = rcp.encode_vectors(v, "f32-base64")
+    assert meta == {"encoding": "f32-base64", "dimension": 3}
+    assert rcp.decode_vectors(enc, **meta) == v          # exact round trip
+    j, jmeta = rcp.encode_vectors(v)
+    assert jmeta == {} and rcp.decode_vectors(j) == v    # json default
+    try:
+        rcp.decode_vectors(enc, encoding="f32-base64", dimension=99)
+        raise AssertionError("expected a dimension mismatch to raise")
+    except ValueError:
+        pass
+    print("f32-base64 vector codec: ok")
+
+
 if __name__ == "__main__":
     test_server_handle_inproc()
     test_client_against_cpp_server()
     test_registry_selector()
     test_agentic_surfaces()
     test_filter()
+    test_fusion()
+    test_vector_codec()
     print("\nall native Python SDK checks passed")

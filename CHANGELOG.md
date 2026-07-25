@@ -11,6 +11,37 @@ The authoritative change log is
 rendered version lives at the
 [Changelog page](https://rcp-6d6ef6d5.mintlify.site/reference/changelog).
 
+## [1.0 · ed.3] — 2026 (adoption & developer-experience revision)
+
+Makes conformance *executable and certifiable*, and turns the reference server
+and SDKs into a working demonstration of the SOTA the spec describes. Additive;
+no wire change.
+
+### Added
+- **Level-aware certification harness** (§14.5). `conformance/check.py` now tags
+  every check L0/L1/L2, reports the highest level a server actually reaches
+  (`CERTIFIED LEVEL: …`), skips checks for unadvertised capabilities, and
+  cross-checks the server's self-declared `_meta.conformance` — a server that
+  **overclaims** fails even with zero failed checks. `--json` emits a
+  CI-consumable report; non-zero exit gates a release pipeline.
+- **Reference RRF / weighted fusion** in the Python SDK (`rcp.rrf_fuse`,
+  `rcp.weighted_fuse`) — the federation algorithm from §16.3 as importable,
+  tested code (deterministic tie-break, richest-body dedup, origin tagging) so
+  no adopter re-derives it. Verified against a hand computation.
+- `Server.set_conformance("L0"|"L1"|"L2")` in the Python SDK, surfaced as
+  `_meta.conformance` in `initialize`/`info` (§14).
+
+### Changed
+- **The reference server is now a real hybrid pipeline.** `examples/example_server.py`
+  was dense-only cosine; it now does dense + learned-sparse recall → RRF fusion
+  → cross-encoder-style rerank → top-k, honouring the `candidateK ≥ topN ≥ k`
+  funnel, returning per-stage `scores`, `usage` telemetry, and real citations,
+  supporting `mode: dense|sparse|hybrid`, and **certifying at L2**. It is now a
+  readable, dependency-free template for a production RAG engine.
+- Conformance suite expanded to 26 checks (adds funnel-violation, hybrid-mode,
+  and rerank-ordering checks); green and honest against the Python **and** C++
+  reference servers (both certify L2).
+
 ## [1.0 · ed.2] — 2026 (hardening revision)
 
 Interop-correctness and robustness pass. Additive on the wire: every new field

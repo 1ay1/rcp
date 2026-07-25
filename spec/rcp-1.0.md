@@ -1402,6 +1402,38 @@ The JSON Schema in [`/schema`](../schema) is normative for message shapes; the
 [`/conformance`](../conformance) suite validates any server, in any language,
 over stdio or HTTP.
 
+### 14.5 Certifying a server
+
+Conformance is **executable**, not aspirational. The reference harness runs a
+server through every MUST at each level and reports the highest level it actually
+reaches:
+
+```
+$ python3 conformance/check.py -- my-rcp-server --stdio
+  [L0] PASS  info answers before initialize
+  …
+  [L2] PASS  advertised hybrid mode returns hits
+  CERTIFIED LEVEL: L2
+  declared _meta.conformance='L2' — consistent
+```
+
+- Each check is tagged with the level it belongs to. A level is **certified**
+  only when every applicable MUST at that level *and all lower levels* passes.
+  Checks for a capability the server does not advertise are **skipped**, so a
+  minimal-but-correct server certifies at exactly the level it reaches rather
+  than being penalised for features it never claimed.
+- The harness cross-checks the server's self-declared `_meta.conformance` (§14)
+  against the level it could actually prove. A server that **overclaims** (says
+  `L2`, behaves `L1`) fails certification even if no individual check failed —
+  an honest `L1` is worth more than a dishonest `L2`.
+- `--json` emits a machine-readable report (`certifiedLevel`, `declaredLevel`,
+  `declarationHonest`, per-check status) for CI gating and for a public
+  compatibility matrix. A conforming server **SHOULD** run this in CI and
+  **MAY** publish the resulting level as a badge.
+
+The exit code is non-zero on any failed MUST or any overclaim, so
+`conformance/check.py` drops directly into a CI pipeline as a release gate.
+
 ---
 
 ## 15. Security Considerations

@@ -131,6 +131,14 @@ class Server:
     def set_info(self, name: str, version: str) -> None:
         self._info = {"name": str(name), "version": str(version)}
 
+    def set_conformance(self, level: str) -> None:
+        """Declare the conformance level (spec §14) this server claims: ``"L0"``,
+        ``"L1"``, or ``"L2"``. Surfaced in ``initialize``/``info`` under
+        ``_meta.conformance`` — the conformance harness holds the server to it."""
+        if level not in ("L0", "L1", "L2"):
+            raise ValueError("conformance level must be one of L0, L1, L2")
+        self._conformance = level
+
     def advertise(self, capability, meta=None) -> None:
         """Advertise a capability with optional metadata (stored under its wire
         key). Advertising is independent of registering a handler; a gated call
@@ -246,11 +254,14 @@ class Server:
         return _dumps(reply) if reply is not None else ""
 
     def _info_result(self, version: int) -> dict:
-        return {
+        result = {
             "protocolVersion": version,
             "server": dict(self._info),
             "capabilities": dict(self._caps),
         }
+        if getattr(self, "_conformance", None):
+            result["_meta"] = {"conformance": self._conformance}
+        return result
 
     # ── serving ──────────────────────────────────────────────────────────────
     def serve_stdio(self) -> None:

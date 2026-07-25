@@ -36,6 +36,7 @@ from ._selector import EngineSpec, Selector
 from ._server import Server, make_log_notification, make_progress_notification
 from ._transport import HttpTransport, StdioTransport
 from ._vectors import decode_vectors, encode_vectors
+from ._fusion import RRF_K_DEFAULT, rrf_fuse, weighted_fuse
 from ._types import (
     PROTOCOL_VERSION,
     Capability,
@@ -51,6 +52,7 @@ __all__ = [
     "make_log_notification", "make_progress_notification",
     "StdioTransport", "HttpTransport", "negotiate_version", "filter",
     "encode_vectors", "decode_vectors",
+    "rrf_fuse", "weighted_fuse", "RRF_K_DEFAULT",
 ]
 __version__ = "1.0.0"
 
