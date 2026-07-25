@@ -37,3 +37,4 @@ sdk/rust/Cargo.lock
 # Docs (Mintlify)
 .mintlify/
 
+.agentty_rag_cache.bin

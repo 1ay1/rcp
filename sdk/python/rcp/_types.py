@@ -84,6 +84,11 @@ class Errc:
     CANCELLED = -32006
     BACKEND_UNAVAILABLE = -32010
     RATE_LIMITED = -32011
+    UNAUTHORIZED = -32012
+    PAYLOAD_TOO_LARGE = -32013
+    TIMEOUT = -32014
+    NOT_FOUND = -32015
+    CONFLICT = -32016
 
 
 class RcpError(RuntimeError):
@@ -101,11 +106,11 @@ class RcpError(RuntimeError):
         self.data = data
 
     def retryable(self) -> bool:
-        """RateLimited / BackendUnavailable are transient by default; an explicit
-        ``data.retryable`` overrides the code-based default (spec §12)."""
+        """RateLimited / BackendUnavailable / Timeout are transient by default; an
+        explicit ``data.retryable`` overrides the code-based default (spec §12)."""
         if isinstance(self.data, dict) and isinstance(self.data.get("retryable"), bool):
             return self.data["retryable"]
-        return self.code in (Errc.RATE_LIMITED, Errc.BACKEND_UNAVAILABLE)
+        return self.code in (Errc.RATE_LIMITED, Errc.BACKEND_UNAVAILABLE, Errc.TIMEOUT)
 
     def retry_after_ms(self) -> int:
         """Server-suggested backoff in ms (``data.retryAfterMs``), or -1."""

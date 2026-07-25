@@ -37,6 +37,19 @@ class Stdio:
         self.p.stdin.flush()
         return json.loads(self.p.stdout.readline())
 
+    def notify(self, obj, timeout=0.5):
+        """Send a frame and return the reply, or None if the server stayed silent.
+
+        §4.5 requires a notification (a frame with no `id`) to go unanswered, so
+        the only way to test it is to wait and prove nothing came back."""
+        import select
+        self.p.stdin.write(json.dumps(obj) + "\n")
+        self.p.stdin.flush()
+        if select.select([self.p.stdout], [], [], timeout)[0]:
+            line = self.p.stdout.readline()
+            return json.loads(line) if line.strip() else None
+        return None
+
     def close(self):
         self.p.stdin.close()
         try:
@@ -55,6 +68,21 @@ class Http:
                                      headers={"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(req) as r:
             return json.loads(r.read())
+
+    def notify(self, obj, timeout=0.5):
+        """§5.2: a notification over HTTP is answered with 204 (or an empty body),
+        never a JSON-RPC response object. Returns None when correctly silent."""
+        req = urllib.request.Request(f"{self.base}/{obj.get('method','')}",
+                                     data=json.dumps(obj).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                body = r.read()
+                if r.status == 204 or not body.strip():
+                    return None
+                return json.loads(body)
+        except Exception:
+            return None
 
     def close(self):
         pass
@@ -76,6 +104,34 @@ def run(t):
     r = t.raw({"jsonrpc": "2.0", "id": 1, "method": Method.RETRIEVE, "params": {"query": "x", "k": 1}})
     check("pre-initialize call rejected with -32001",
           r.get("error", {}).get("code") == Errc.NOT_INITIALIZED, str(r))
+
+    # ── §4.5: notifications MUST NOT be answered ─────────────────────────────
+    # A frame with no `id` gets no reply — not a result, and not an error. A
+    # server that answers desynchronises any client that correlates by id.
+    check("notification (no id) for a gated method is not answered",
+          t.notify({"jsonrpc": "2.0", "method": Method.RETRIEVE,
+                    "params": {"query": "x", "k": 1}}) is None)
+    check("notification (no id) for an open method is not answered",
+          t.notify({"jsonrpc": "2.0", "method": Method.INFO, "params": {}}) is None)
+    check("notification (no id) for an unknown method is not answered",
+          t.notify({"jsonrpc": "2.0", "method": "does/not/exist", "params": {}}) is None)
+    check("notifications/cancel is not answered",
+          t.notify({"jsonrpc": "2.0", "method": "notifications/cancel",
+                    "params": {"id": 12345}}) is None)
+
+    # ── §13: a FAILED handshake must not unlock the server ───────────────────
+    # negotiate_version() floors at MIN_PROTOCOL_VERSION, so version 0 must be
+    # rejected AND must leave the session uninitialized.
+    r = t.raw({"jsonrpc": "2.0", "id": 200, "method": Method.INITIALIZE,
+               "params": {"protocolVersion": 0, "client": {"name": "conf", "version": "1"}}})
+    unsupported_rejected = r.get("error", {}).get("code") == Errc.VERSION_MISMATCH
+    check("initialize with an unsupported version rejected with -32002",
+          unsupported_rejected, str(r))
+    if unsupported_rejected:
+        r = t.raw({"jsonrpc": "2.0", "id": 201, "method": Method.RETRIEVE,
+                   "params": {"query": "x", "k": 1}})
+        check("a failed handshake leaves the session uninitialized",
+              r.get("error", {}).get("code") == Errc.NOT_INITIALIZED, str(r))
 
     # initialize MUST return protocolVersion >= 1 + capabilities
     r = t.raw({"jsonrpc": "2.0", "id": 2, "method": Method.INITIALIZE,
@@ -103,8 +159,45 @@ def run(t):
     if "retrieve" in caps:
         r = t.raw({"jsonrpc": "2.0", "id": 5, "method": Method.RETRIEVE,
                    "params": {"query": "test", "k": 3}})
-        check("retrieve returns a 'hits' array",
-              isinstance(r.get("result", {}).get("hits"), list), str(r))
+        hits = r.get("result", {}).get("hits")
+        check("retrieve returns a 'hits' array", isinstance(hits, list), str(r))
+
+        if isinstance(hits, list):
+            # §7.7: the server MUST NOT return more than k hits.
+            check("retrieve honours the k ceiling", len(hits) <= 3,
+                  f"asked k=3, got {len(hits)}")
+            # §7.7: every hit MUST carry an id and a numeric score.
+            check("every hit carries an id and a numeric score",
+                  all(isinstance(h, dict) and "id" in h
+                      and isinstance(h.get("score"), (int, float))
+                      and not isinstance(h.get("score"), bool) for h in hits), str(hits)[:200])
+            # §7.7: hits MUST be ordered by descending score.
+            scores = [h.get("score") for h in hits
+                      if isinstance(h, dict) and isinstance(h.get("score"), (int, float))]
+            check("hits are ordered by descending score",
+                  scores == sorted(scores, reverse=True), str(scores))
+            # §4.7: ids MUST be unique within one result set.
+            ids = [h.get("id") for h in hits if isinstance(h, dict)]
+            check("hit ids are unique within a result", len(ids) == len(set(ids)), str(ids))
+
+        # §7.7: k above the advertised maxK is CLAMPED, never an error.
+        max_k = (caps.get("retrieve") or {}).get("maxK")
+        if isinstance(max_k, int) and max_k >= 1:
+            r = t.raw({"jsonrpc": "2.0", "id": 6, "method": Method.RETRIEVE,
+                       "params": {"query": "test", "k": max_k + 1000}})
+            over = r.get("result", {}).get("hits")
+            check("k above maxK is clamped, not rejected",
+                  isinstance(over, list) and len(over) <= max_k, str(r)[:200])
+
+        # §7.7: a structurally invalid k is -32602 (not a clamp).
+        r = t.raw({"jsonrpc": "2.0", "id": 7, "method": Method.RETRIEVE,
+                   "params": {"query": "test", "k": -5}})
+        check("negative k rejected with -32602",
+              r.get("error", {}).get("code") == Errc.INVALID_PARAMS, str(r)[:200])
+
+    # §4.2: a response MUST echo the request id, with the same JSON type.
+    r = t.raw({"jsonrpc": "2.0", "id": "str-id-1", "method": Method.INFO, "params": {}})
+    check("response echoes a string id unchanged", r.get("id") == "str-id-1", str(r)[:200])
 
     # every reply MUST be valid JSON-RPC 2.0
     check("responses carry jsonrpc=2.0", r.get("jsonrpc") == "2.0", str(r))

@@ -11,6 +11,48 @@ The authoritative change log is
 rendered version lives at the
 [Changelog page](https://rcp-6d6ef6d5.mintlify.site/reference/changelog).
 
+## [1.0 · ed.2] — 2026 (hardening revision)
+
+Interop-correctness and robustness pass. Additive on the wire: every new field
+and error code is capability- or opt-in-gated, and no existing shape changed.
+
+### Fixed (correctness — all four SDKs)
+- **Notifications were being answered.** A JSON-RPC frame with no `id` now
+  produces no reply in any SDK — previously every server emitted a spurious
+  `id: null` response, desynchronising any pipelining client (§4.5).
+- **A failed handshake unlocked the server.** `initialize` now marks the
+  session initialized only on *successful* version negotiation; a rejected
+  version (`-32002`) leaves gated methods returning `-32001` (§13).
+- `notifications/cancel` carrying an `id` is now rejected as malformed rather
+  than silently accepted.
+
+### Added
+- **Five error codes** (§12): `-32012` Unauthorized, `-32013` PayloadTooLarge,
+  `-32014` Timeout, `-32015` NotFound, `-32016` Conflict — with normative
+  retryability and overlap-disambiguation rules. Defined in all four SDKs.
+- **Compact vector encoding** `f32-base64` (§7.3.1): negotiated, ~4× smaller
+  than JSON numbers, always falling back to `json`. Reference codec in the
+  Python SDK (`encode_vectors` / `decode_vectors`).
+- **Lifecycle rules** (§13): per-request deadlines + `Timeout`, transport-death
+  semantics, `index/add` idempotency (upsert-by-id), and a **capability-stability**
+  guarantee (the set is fixed for a session).
+- **Federation robustness** (§16.2): partial-failure semantics, hop-budget /
+  path loop detection, and deadline propagation.
+- **Authentication surface** (§15.6): where credentials live and how `-32012`
+  must be used without leaking document existence.
+- Shared param validation in every SDK: structurally invalid counts (`k <= 0`,
+  non-integer) and funnel-invariant violations are `-32602`.
+
+### Changed
+- **The JSON Schema is now a real validator.** It previously defined 45 unused
+  `$defs` with no root schema — it validated nothing. It now validates any
+  message or batch, binds each method to its params/result, constrains error
+  codes and request ids, and enforces the Content `data`-XOR-`uri` rule. Added
+  the previously-missing `GraphResult`.
+- Conformance harness expanded from 10 to 23 checks, including notification
+  silence, failed-handshake lockout, and the retrieve funnel/ordering/id
+  invariants. Verified green against the Python **and** C++ reference servers.
+
 ## [1.0 · ed.] — 2026 (editorial revision)
 
 Clarifications and one notification rename. **No changes to any

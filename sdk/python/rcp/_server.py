@@ -71,6 +71,51 @@ def make_progress_notification(token, progress: float, stage: str = "", partial=
     return _dumps({"jsonrpc": "2.0", "method": Method.PROGRESS, "params": params})
 
 
+# Count-like params that share one rule across every method (spec §4.6/§7.7): a
+# value out of RANGE is clamped by the server, but a value of the wrong TYPE or
+# sign is structurally invalid and MUST be -32602. Validating centrally means no
+# handler can forget, and all four SDKs reject the same inputs identically.
+_POSITIVE_INT_FIELDS = ("k", "topN", "candidateK", "n", "hops", "tokenBudget", "limit")
+
+
+def _validate_params(method: str, params):
+    """Return an ``(code, message, data)`` triple if *params* is structurally
+    invalid for *method*, else ``None``. Enforces only method-independent
+    invariants the spec states as MUST; semantic checks stay in the handler."""
+    if not isinstance(params, dict):
+        return (Errc.INVALID_PARAMS, "'params' MUST be an object", None)
+
+    for field in _POSITIVE_INT_FIELDS:
+        if field not in params:
+            continue
+        v = params[field]
+        if isinstance(v, bool) or not isinstance(v, int):
+            return (Errc.INVALID_PARAMS,
+                    f"'{field}' MUST be an integer", {"field": field})
+        if v < 1:
+            return (Errc.INVALID_PARAMS,
+                    f"'{field}' MUST be >= 1", {"field": field})
+
+    # §3.3 funnel invariant: candidateK >= rerank.topN >= k.
+    k = params.get("k")
+    cand = params.get("candidateK")
+    rerank = params.get("rerank")
+    top_n = rerank.get("topN") if isinstance(rerank, dict) else None
+    if isinstance(top_n, bool) or not isinstance(top_n, int):
+        top_n = None
+    if isinstance(k, int) and isinstance(cand, int) and cand < k:
+        return (Errc.INVALID_PARAMS,
+                "'candidateK' MUST be >= 'k' (funnel invariant)", {"field": "candidateK"})
+    if isinstance(k, int) and top_n is not None and top_n < k:
+        return (Errc.INVALID_PARAMS,
+                "'rerank.topN' MUST be >= 'k' (funnel invariant)", {"field": "rerank.topN"})
+    if isinstance(cand, int) and top_n is not None and cand < top_n:
+        return (Errc.INVALID_PARAMS,
+                "'candidateK' MUST be >= 'rerank.topN' (funnel invariant)",
+                {"field": "candidateK"})
+    return None
+
+
 class Server:
     """An RCP/1 server. Register handlers with :meth:`on` (usable as a decorator),
     then serve over stdio or HTTP — or drive :meth:`handle` directly for tests."""
@@ -80,6 +125,7 @@ class Server:
         self._caps: dict = {}          # wire JSON key -> metadata object
         self._handlers: dict = {}      # method string -> callable(params) -> result
         self._initialized = False
+        self._negotiated = PROTOCOL_VERSION   # version agreed at handshake (§7.1)
 
     # ── configuration ───────────────────────────────────────────────────────
     def set_info(self, name: str, version: str) -> None:
@@ -117,12 +163,23 @@ class Server:
         m = request["method"]
         params = request["params"] if "params" in request else {}
 
+        # §4.5: a message with NO `id` is a notification and MUST NOT be
+        # answered — whatever it asks for, known method or not. This check must
+        # precede all dispatch: answering a notification (even with an error)
+        # desynchronises a pipelining client, which correlates strictly by id.
+        if "id" not in request:
+            return None
+
         if m == Method.INITIALIZE:
-            self._initialized = True
             neg = negotiate_version(params.get("protocolVersion", PROTOCOL_VERSION)
                                     if isinstance(params, dict) else PROTOCOL_VERSION)
             if neg < MIN_PROTOCOL_VERSION:
                 return _err(id_, Errc.VERSION_MISMATCH, "no common version")
+            # §7.1: the session is initialized only on a SUCCESSFUL handshake.
+            # Setting this before the version check would leave a server that
+            # just rejected the peer's version fully unlocked.
+            self._initialized = True
+            self._negotiated = neg
             return _ok(id_, self._info_result(neg))
         if m == Method.INFO:
             return _ok(id_, self._info_result(PROTOCOL_VERSION))
@@ -130,8 +187,14 @@ class Server:
             has_nonce = isinstance(params, dict) and "nonce" in params
             return _ok(id_, {"nonce": params["nonce"]} if has_nonce else {})
         if m == Method.CANCEL:
-            return None  # cancellation is a notification: never answered
+            # `notifications/cancel` carrying an `id` is malformed: §7.14 defines
+            # it as a notification only. Reject rather than silently accept.
+            return _err(id_, Errc.INVALID_REQUEST,
+                        "'notifications/cancel' is a notification and MUST NOT carry an 'id'")
         if m == Method.SHUTDOWN:
+            # §7.12/§13: shutdown is always available. It is the graceful twin of
+            # EOF-on-stdin (which is unconditional), leaks nothing, and refusing
+            # it would force a peer to either handshake pointlessly or hard-kill.
             return _ok(id_, {})
 
         if not self._initialized:
@@ -148,6 +211,11 @@ class Server:
             return _err(id_, Errc.CAPABILITY_MISSING, f"'{m}' not implemented")
         if self._caps.get(cap.value) is None:
             return _err(id_, Errc.CAPABILITY_MISSING, f"capability '{cap.value}' not supported")
+        # §12: params are validated only after capability gating, so a client
+        # learns "I don't do that at all" before "your argument was malformed".
+        bad = _validate_params(m, params)
+        if bad is not None:
+            return _err(id_, bad[0], bad[1], bad[2])
         try:
             result = fn(params)
         except RcpError as e:

@@ -22,12 +22,89 @@ pub struct Server {
     caps: Json,
     handlers: HashMap<String, Handler>,
     initialized: bool,
+    /// Protocol version agreed at the handshake (§7.1).
+    negotiated: i64,
 }
 
 impl Default for Server {
     fn default() -> Server {
         Server::new()
     }
+}
+
+/// Count-like params that share one rule across every method (spec §4.6/§7.7): a
+/// value out of RANGE is clamped by the server, but a value of the wrong TYPE or
+/// sign is structurally invalid and MUST be -32602. Validating centrally means no
+/// handler can forget, and all four SDKs reject the same inputs identically.
+const POSITIVE_INT_FIELDS: &[&str] =
+    &["k", "topN", "candidateK", "n", "hops", "tokenBudget", "limit"];
+
+/// Returns `Some(RcpError)` when `params` is structurally invalid, else `None`.
+/// Enforces only method-independent invariants the spec states as MUST;
+/// semantic checks stay in the handler.
+fn validate_params(params: &Json) -> Option<RcpError> {
+    if params.as_object().is_none() {
+        return Some(RcpError::new(Errc::INVALID_PARAMS, "'params' MUST be an object"));
+    }
+    let int_of = |v: &Json| -> Option<i64> {
+        if v.as_bool().is_some() {
+            return None; // a JSON bool is not an integer
+        }
+        let n = v.as_f64()?;
+        if n.fract() == 0.0 { Some(n as i64) } else { None }
+    };
+
+    for field in POSITIVE_INT_FIELDS {
+        let Some(v) = params.get(*field) else { continue };
+        match int_of(v) {
+            None => {
+                return Some(RcpError::with_data(
+                    Errc::INVALID_PARAMS,
+                    format!("'{field}' MUST be an integer"),
+                    obj(&[("field", Json::from(*field))]),
+                ))
+            }
+            Some(n) if n < 1 => {
+                return Some(RcpError::with_data(
+                    Errc::INVALID_PARAMS,
+                    format!("'{field}' MUST be >= 1"),
+                    obj(&[("field", Json::from(*field))]),
+                ))
+            }
+            Some(_) => {}
+        }
+    }
+
+    // §3.3 funnel invariant: candidateK >= rerank.topN >= k.
+    let k = params.get("k").and_then(int_of);
+    let cand = params.get("candidateK").and_then(int_of);
+    let top_n = params.get("rerank").and_then(|r| r.get("topN")).and_then(int_of);
+    let viol = |field: &str, msg: &str| {
+        Some(RcpError::with_data(
+            Errc::INVALID_PARAMS,
+            msg.to_string(),
+            obj(&[("field", Json::from(field))]),
+        ))
+    };
+    if let (Some(k), Some(c)) = (k, cand) {
+        if c < k {
+            return viol("candidateK", "'candidateK' MUST be >= 'k' (funnel invariant)");
+        }
+    }
+    if let (Some(k), Some(t)) = (k, top_n) {
+        if t < k {
+            return viol("rerank.topN", "'rerank.topN' MUST be >= 'k' (funnel invariant)");
+        }
+    }
+    if let (Some(c), Some(t)) = (cand, top_n) {
+        if c < t {
+            return viol(
+                "candidateK",
+                "'candidateK' MUST be >= 'rerank.topN' (funnel invariant)",
+            );
+        }
+    }
+    None
 }
 
 impl Server {
@@ -37,6 +114,7 @@ impl Server {
             caps: Json::object(),
             handlers: HashMap::new(),
             initialized: false,
+            negotiated: PROTOCOL_VERSION,
         }
     }
 
@@ -74,9 +152,16 @@ impl Server {
         };
         let params = request.get("params").cloned().unwrap_or_else(Json::object);
 
+        // §4.5: a message with NO `id` is a notification and MUST NOT be
+        // answered — whatever it asks for, known method or not. This check must
+        // precede all dispatch: answering a notification (even with an error)
+        // desynchronises a pipelining client, which correlates strictly by id.
+        if request.get("id").is_none() {
+            return None;
+        }
+
         match method.as_str() {
             Method::INITIALIZE => {
-                self.initialized = true;
                 let peer = params
                     .get("protocolVersion")
                     .and_then(|v| v.as_i64())
@@ -85,6 +170,11 @@ impl Server {
                 if neg < MIN_PROTOCOL_VERSION {
                     return Some(err(&id, Errc::VERSION_MISMATCH, "no common version"));
                 }
+                // §7.1: the session is initialized only on a SUCCESSFUL
+                // handshake. Setting this before the version check would leave a
+                // server that just rejected the peer's version fully unlocked.
+                self.initialized = true;
+                self.negotiated = neg;
                 Some(ok(&id, self.info_result(neg)))
             }
             Method::INFO => Some(ok(&id, self.info_result(PROTOCOL_VERSION))),
@@ -95,7 +185,16 @@ impl Server {
                 };
                 Some(ok(&id, result))
             }
-            Method::CANCEL => None, // notification: never answered
+            // `notifications/cancel` carrying an `id` is malformed: §7.14
+            // defines it as a notification only. Reject rather than accept.
+            Method::CANCEL => Some(err(
+                &id,
+                Errc::INVALID_REQUEST,
+                "'notifications/cancel' is a notification and MUST NOT carry an 'id'",
+            )),
+            // §7.12/§13: shutdown is always available. It is the graceful twin
+            // of EOF-on-stdin (which is unconditional), leaks nothing, and
+            // refusing it would force a peer to handshake pointlessly or kill.
             Method::SHUTDOWN => Some(ok(&id, Json::object())),
             _ => {
                 if !self.initialized {
@@ -121,6 +220,11 @@ impl Server {
                 Errc::CAPABILITY_MISSING,
                 &format!("capability '{}' not supported", cap.wire_key()),
             );
+        }
+        // §12: params are validated only after capability gating, so a client
+        // learns "I don't do that at all" before "your argument was malformed".
+        if let Some(e) = validate_params(params) {
+            return err_data(id, e.code, &e.message, e.data);
         }
         let handler = self.handlers.get_mut(method).expect("handler present");
         match handler(params) {

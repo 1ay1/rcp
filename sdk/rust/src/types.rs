@@ -131,6 +131,11 @@ impl Errc {
     pub const CANCELLED: i64 = -32006;
     pub const BACKEND_UNAVAILABLE: i64 = -32010;
     pub const RATE_LIMITED: i64 = -32011;
+    pub const UNAUTHORIZED: i64 = -32012;
+    pub const PAYLOAD_TOO_LARGE: i64 = -32013;
+    pub const TIMEOUT: i64 = -32014;
+    pub const NOT_FOUND: i64 = -32015;
+    pub const CONFLICT: i64 = -32016;
 }
 
 /// An RCP protocol or transport error.
@@ -161,15 +166,17 @@ impl RcpError {
         }
     }
 
-    /// RateLimited / BackendUnavailable are transient by default; an explicit
-    /// `data.retryable` overrides the code-based default (spec §12).
+    /// RateLimited / BackendUnavailable / Timeout are transient by default; an
+    /// explicit `data.retryable` overrides the code-based default (spec §12).
     pub fn retryable(&self) -> bool {
         if let Some(d) = &self.data {
             if let Some(b) = d.get("retryable").and_then(|v| v.as_bool()) {
                 return b;
             }
         }
-        self.code == Errc::RATE_LIMITED || self.code == Errc::BACKEND_UNAVAILABLE
+        self.code == Errc::RATE_LIMITED
+            || self.code == Errc::BACKEND_UNAVAILABLE
+            || self.code == Errc::TIMEOUT
     }
 
     /// Server-suggested backoff in ms (`data.retryAfterMs`), or `-1`.

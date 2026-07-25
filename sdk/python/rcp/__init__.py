@@ -35,6 +35,7 @@ from . import _filter as filter  # noqa: A004 — public submodule `rcp.filter`
 from ._selector import EngineSpec, Selector
 from ._server import Server, make_log_notification, make_progress_notification
 from ._transport import HttpTransport, StdioTransport
+from ._vectors import decode_vectors, encode_vectors
 from ._types import (
     PROTOCOL_VERSION,
     Capability,
@@ -49,6 +50,7 @@ __all__ = [
     "Method", "Errc", "RcpError", "connect_stdio", "connect_http",
     "make_log_notification", "make_progress_notification",
     "StdioTransport", "HttpTransport", "negotiate_version", "filter",
+    "encode_vectors", "decode_vectors",
 ]
 __version__ = "1.0.0"
 

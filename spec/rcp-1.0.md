@@ -657,6 +657,42 @@ passage prefixes) select the right pooling. Requests **SHOULD** respect
 `embed.batchLimit`. For backward compatibility a server **MUST** also accept the
 legacy field name `texts` as a synonym for `inputs`.
 
+#### 7.3.1 Compact vector encoding
+
+JSON numbers are a poor carrier for embeddings: a 1 000 × 1 024 `float32` batch
+is ~4 MB binary but ~10–20 MB as decimal text, and every round trip pays parse
+and re-serialisation cost. A server **MAY** therefore advertise binary encodings:
+
+```json
+"embed": { "dimension": 1024, "encodings": ["json", "f32-base64"] }
+```
+
+- `"json"` — an array of JSON numbers. **Always supported**; it is the default
+  and the fallback, so a client that ignores this feature is never broken.
+- `"f32-base64"` — the vector as little-endian IEEE-754 `binary32`, concatenated
+  and base64-encoded ([RFC 4648] §4, with padding).
+
+A client opts in per request with `"encoding": "f32-base64"`. The server **MUST**
+echo the encoding it actually used in the result, and **MUST NOT** use an
+encoding the client did not request:
+
+```json
+{ "vectors": ["ZGF0YQ==", "…"], "encoding": "f32-base64", "dimension": 1024 }
+```
+
+- When `encoding` is absent from the result, it is `"json"`.
+- With a binary encoding, `dimension` **MUST** be present, each decoded blob
+  **MUST** be exactly `dimension × 4` bytes, and a receiver **MUST** reject a
+  blob of any other length with `-32602`.
+- Requesting an unadvertised encoding is `-32005` (`OptionUnsupported`) under the
+  usual `strict` rule (§7.7).
+- Byte order is **little-endian** regardless of host architecture, so the wire is
+  reproducible across platforms.
+
+The same `encoding` field applies to `embed/multi` (§7.5) and to `hit.vector`
+when `includeVectors` is set (§7.7). Sparse vectors (§7.4) are unaffected — they
+are already compact.
+
 ### 7.4 `embed/sparse` — gated by `sparseEmbed`
 
 **Params** `{ "texts": [string], "kind"?: "query"|"document" }`
@@ -908,9 +944,31 @@ document in `hypothetical` (which the client then embeds).
 ```
 **Result** `{ "ids": [string], "chunks"?: int }`
 
+`ids` **MUST** be returned in the same order as the input `documents`, one entry
+per input document, so a client can correlate them positionally.
+
+**Idempotency.** A write can be retried after a transport failure without the
+client knowing whether the original took effect (§13.1), so identity is
+normative: a document carrying an explicit `id` is an **upsert** — re-adding the
+same `id` **MUST** replace the prior document and **MUST NOT** create a duplicate
+or fail. Servers **MUST** make repeated `index/add` of identical `{id, text}`
+pairs observationally identical to a single one. A server that cannot upsert
+**MUST** reject the duplicate with `-32016` (`Conflict`) rather than silently
+forking the corpus. Documents with **no** `id` are not idempotent — the server
+mints an id and a retry creates a second copy — so a client that may retry
+**SHOULD** supply its own stable `id`s (a content hash is the usual choice).
+
+A client **MAY** additionally set `_meta.idempotencyKey` (an opaque string) on
+`index/add`; a server that recognises it **SHOULD** return the original result
+for a repeat of the same key rather than re-applying the write.
+
 ### 7.11 `index/delete` — gated by `index`
 
 **Params** `{ "ids": [string] }` · **Result** `{ "deleted": int }`
+
+Deletion is idempotent: deleting an `id` that is absent (or already deleted)
+**MUST NOT** be an error. `deleted` counts only the documents actually removed by
+this call, so a repeat of the same request returns `0`.
 
 ### 7.12 `shutdown` — REQUIRED
 
@@ -1163,10 +1221,35 @@ are standard JSON-RPC.
 | `-32006` | `Cancelled` | Request was cancelled via `notifications/cancel` (§7.14). |
 | `-32010` | `BackendUnavailable` | Model offline, index not built, upstream down. |
 | `-32011` | `RateLimited` | Server is shedding load; client should back off. |
+| `-32012` | `Unauthorized` | Caller is unauthenticated, or not authorised for this corpus/method (§15.6). |
+| `-32013` | `PayloadTooLarge` | Request exceeds a server limit (body bytes, batch size, `inputs` count) (§15.5). |
+| `-32014` | `Timeout` | The server's own deadline for this request elapsed (§13.1). |
+| `-32015` | `NotFound` | A referenced entity does not exist: `memoryId`, `sessionId`, an expired `cursor`, or an `id` in `index/delete`. |
+| `-32016` | `Conflict` | The write conflicts with current state: duplicate `id` on a non-idempotent `index/add`, or a pinned `indexVersion` no longer available (§7.10). |
 
 The range `-32000..-32099` is reserved for RCP; implementers **MUST NOT** define
 custom codes there. Vendor-specific failures **SHOULD** reuse the closest code
-above and disambiguate in `error.data`.
+above and disambiguate in `error.data`. A receiver **MUST** treat an unrecognised
+code as a generic failure of the same sign rather than rejecting the frame — new
+codes are additive within a major version (Appendix A).
+
+**Choosing between overlapping codes.** These are frequently confused; the
+distinction is normative:
+
+- `-32004` `UnknownMethod` — the method is not defined by RCP *at all*.
+- `-32003` `CapabilityMissing` — the method is defined by RCP but this server did
+  not advertise its capability. A server **MUST** prefer `-32004` when both
+  apply, so a client can distinguish "you are too old" from "I am too small".
+- `-32005` `OptionUnsupported` — the method *is* advertised, but a requested
+  option value (a `mode`, `rerank.method`, `filter` operator) is not in the
+  advertised set. Use `error.data.option`.
+- `-32602` `InvalidParams` — the request is malformed *independently of
+  capabilities*: a missing required field, a wrong JSON type, a value out of
+  range, or a filter naming an unadvertised **field**. Use `error.data.field`.
+
+A value that is well-formed but larger than an advertised limit (`k > maxK`) is
+not an error at all: the server **MUST** clamp it (§7.7). Only a value that is
+structurally invalid (`k` negative, `k` non-integer) is `-32602`.
 
 ### 12.1 `error.data`
 
@@ -1197,6 +1280,11 @@ given.
 | `-32003` / `-32004` / `-32005` | no | Programming/capability error; do not retry. |
 | `-32602` `InvalidParams` | no | Fix the request. |
 | `-32006` `Cancelled` | n/a | Expected after a cancel; do not retry automatically. |
+| `-32012` `Unauthorized` | no | Obtain/refresh credentials at the transport, then retry once. |
+| `-32013` `PayloadTooLarge` | no | Split the batch or shrink the request; retrying it unchanged cannot succeed. |
+| `-32014` `Timeout` | yes | Retry with backoff, a smaller `candidateK`, or a longer deadline. |
+| `-32015` `NotFound` | no | The entity is gone; re-create it (new `memoryId`) or restart pagination. |
+| `-32016` `Conflict` | maybe | Re-read state and retry; do not blindly repeat the write. |
 
 ---
 
@@ -1213,8 +1301,50 @@ Client                              Server
   │  ── shutdown ───────────────────▶ │
 ```
 
-A server **MUST** reject any non-`initialize`/`info` request before a successful
-`initialize` with `-32001`.
+A server **MUST** reject any request before a successful `initialize` with
+`-32001`, **except** `info`, `ping`, and `shutdown`, which are callable at any
+time (§7.2, §7.12, §7.15, §14.1). `notifications/*` frames are never answered at
+all (§4.5) and so are exempt by construction.
+
+"Successful" is load-bearing: an `initialize` that fails version negotiation
+(`-32002`) leaves the session **uninitialized**, and the server **MUST** continue
+to reject gated methods with `-32001`. A client **MAY** retry `initialize` with a
+different `protocolVersion`; a server **MUST** accept a repeated `initialize`
+before any successful one. After a *successful* `initialize`, a second
+`initialize` **MUST** be rejected with `-32600` — re-negotiating mid-session
+would silently invalidate every capability the client has already cached.
+
+### 13.1 Deadlines, timeouts & transport death
+
+- A server **SHOULD** apply a per-request deadline and, on expiry, answer with
+  `-32014` (`Timeout`) rather than holding the request open indefinitely. Every
+  request **MUST** eventually be answered exactly once — with a result, an error,
+  or `-32006` after a cancel — unless the transport dies first.
+- A client **SHOULD** apply its own deadline independently and **MUST NOT**
+  assume a request is dead merely because its deadline elapsed: a late response
+  may still arrive and **MUST** be correlated by `id` and discarded cleanly.
+- On transport death (stdio EOF/EPIPE, HTTP connection reset) all in-flight
+  requests are abandoned. A client **MUST** fail them locally; it **MUST NOT**
+  assume any of them did or did not take effect. For this reason `index/add`
+  and `index/delete` **SHOULD** be made idempotent (§7.10).
+- EOF on stdin is equivalent to `shutdown` (§7.12). After answering `shutdown`
+  a server **SHOULD** stop reading new requests and exit; it **MUST NOT** begin
+  processing a request received after the `shutdown` response was written.
+
+### 13.2 Capability stability
+
+The capability set returned by a successful `initialize` is **fixed for the
+lifetime of that session**. A server **MUST NOT** add, remove, or narrow a
+capability afterwards, and a client is entitled to cache it and gate every call
+on it without re-probing. A server whose backing resources change (a model goes
+offline, an index finishes building) **MUST** keep advertising the capability and
+fail individual calls with `-32010` (`BackendUnavailable`) instead of retracting
+it. A server that genuinely needs a different capability set **MUST** close the
+connection so the client renegotiates from a clean `initialize`.
+
+`info` **MAY** be called at any time and **MUST** report the same capability set
+as the session's `initialize` once one has succeeded. Before any successful
+`initialize`, `info` reports the server's default (maximum) capability set.
 
 ---
 
@@ -1359,6 +1489,25 @@ code.
 - `catalog/list` and `info` reveal topology and capabilities; a server **MAY**
   restrict them to authenticated callers.
 
+**Authentication.** RCP carries no credentials of its own (§1.2) — authentication
+belongs to the transport — but the *outcome* is on the wire and **MUST** be
+uniform:
+
+- Over **HTTP**, credentials **MUST** travel in standard headers
+  (`Authorization: Bearer …`, mTLS). Servers **MUST NOT** accept credentials in
+  the JSON-RPC `params`, where they would land in request logs and `_meta`
+  traces.
+- Over **stdio**, the peer is whoever spawned the process; authorisation is the
+  spawning host's decision and no in-band credential is defined.
+- A server that rejects a caller **MUST** answer `-32012` (`Unauthorized`) rather
+  than a bare transport error, so a federating client can distinguish "this
+  engine refused me" from "this engine is down" (`-32010`) and route around it.
+- A server **MUST NOT** use `-32012` to signal *which* documents exist: an
+  unauthorised `retrieve` **SHOULD** return an empty `hits` array scoped to the
+  caller's corpus, not an error that confirms a hidden document's id.
+- Servers **SHOULD** apply authorisation *before* capability gating so an
+  unauthenticated probe cannot enumerate capabilities via `-32003` vs `-32004`.
+
 ### 15.7 Supply chain & versioning
 
 Pin server binaries and model identities (`embed.identity`); a silent model swap
@@ -1410,6 +1559,41 @@ lacking a requested capability are skipped (not an error). A slow or failing
 non-`required` engine is dropped after a client-side deadline so one bad engine
 cannot stall the query. Each engine is asked for at least `k` hits (a client
 **SHOULD** request `k` or a small multiple to give fusion headroom).
+
+**Partial failure.** A federated query **succeeds** as long as at least one
+engine returned hits. Engines that errored or timed out are skipped, and the
+aggregator **SHOULD** record them in `usage.notes` (and **MAY** list them in
+`_meta.degraded`) so the caller can tell a thin result from a complete one. If a
+`required` engine fails, the federated query **MUST** fail as a whole, surfacing
+that engine's error code. If *every* engine fails, the aggregator **MUST**
+return `-32010` (`BackendUnavailable`) rather than an empty success — "no
+results" and "nothing answered" must be distinguishable.
+
+**Loop detection.** An aggregator is itself an RCP server, so a registry that
+(directly or transitively) lists an aggregator inside its own federation would
+recurse until the stack or the deadline dies. Every federated request **MUST**
+carry a hop budget and a path:
+
+```json
+"_meta": { "federation": { "depth": 2, "path": ["gateway", "docs-agg"] } }
+```
+
+- A client originating a federated query sets `depth` to its remaining hop
+  budget (**RECOMMENDED** default `3`) and `path` to `[]`.
+- An aggregator forwarding a request **MUST** decrement `depth`, **MUST** append
+  its own identity to `path`, and **MUST NOT** forward when `depth` reaches `0`
+  — it answers from its own index only.
+- An aggregator that finds its own identity already in `path` **MUST NOT**
+  forward to that engine; it **MUST** skip it and note the cycle in
+  `usage.notes`. This makes cycles terminate even across independently
+  configured registries.
+- A server that does not federate ignores `_meta.federation` entirely (§4.4).
+
+**Budget propagation.** A client **SHOULD** propagate its remaining deadline as
+`_meta.deadlineMs` (milliseconds remaining, not an absolute clock — peers do not
+share a time base). An aggregator **SHOULD** forward a strictly smaller value to
+its downstreams, reserving time for its own fusion, and **SHOULD** answer with
+`-32014` rather than exceeding it.
 
 ### 16.3 Fusion
 
@@ -1619,6 +1803,7 @@ outcome).
 |---------|------|---------|
 | `RCP/1` 1.0 | 2026 | Initial stable release. Core methods (`initialize`, `info`, `embed`, `embed/sparse`, `embed/multi`, `rerank`, `retrieve`, `query/transform`, `graph`, `index/add`, `index/delete`, `catalog/list`, `shutdown`, `notifications/cancel`, `ping`), capability negotiation, stdio + HTTP(+SSE) transports, a Content/modality model for multimodal & visual-document retrieval, metadata filtering, streaming/progress, `notifications/log` observability, pagination, batching, structured errors with retryability, determinism (`seed`/`indexVersion`), a full threat model, federation (registry + RRF/weighted fusion), and native C++, Python, Node.js, and Rust SDKs. |
 | `RCP/1` 1.0 · ed. | 2026 | Clarifications and one notification rename. No changes to any request/response shape. Additions: normative timestamp/date encoding, score-scale & comparability rules, and `trust.score ∈ [0,1]` (§4.6); `filter` field-type × operator value-typing table and empty-combinator handling (§8); client `capabilities` semantics and tightened version-negotiation wording (§7.1); `embed` accepts Content blocks via `inputs`, with `texts` retained as a legacy synonym (§7.3); explicit `strict` default and the `candidateK ≥ rerank.topN ≥ k` funnel invariant (§7.7); `progressToken` typing/uniqueness (§9); JSON-RPC batch edge cases (§11). Rename: the log notification method `log` → `notifications/log`, and the `notifications/*` namespace is now reserved (§4.5, §17.1); the `log` *capability* key is unchanged. |
+| `RCP/1` 1.0 · ed.2 | 2026 | Hardening revision. Additive on the wire; no existing shape changed. **Interop fixes now normative & tested:** a notification (no `id`) MUST NOT be answered (§4.5); `initialize` marks the session initialized only on *successful* version negotiation, so a rejected version leaves gated methods locked (§13); `notifications/cancel` with an `id` is malformed. **Added:** five error codes `-32012`..`-32016` (Unauthorized/PayloadTooLarge/Timeout/NotFound/Conflict) with retryability and overlap-disambiguation rules (§12); negotiated `f32-base64` compact vector encoding (§7.3.1); per-request deadlines, transport-death semantics, `index/add` idempotency, and a capability-stability guarantee (§13); federation partial-failure, hop-budget loop detection, and deadline propagation (§16.2); an authentication surface for `-32012` (§15.6). The JSON Schema is now a real root validator (message/batch envelope, per-method params/result binding, Content `data`-XOR-`uri`, `GraphResult`). Conformance harness 10 → 23 checks, green against the Python and C++ reference servers. |
 | `RCP/1` 1.0 · SOTA | 2026 | Additive, fully backward-compatible coverage of 2024–2026 RAG frontiers, all gated behind new optional capabilities (absent ⇒ pre-existing behaviour). New optional `Hit` fields: `confidence` (normalised [0,1] for corrective/adaptive/Self-RAG thresholds), `unit`/`level` (retrieval granularity & abstraction level), `provenance` (graph/tree lineage: path, nodes, edges, leaves), and `trust.injectionSuspected`/`sanitized` safety signals (§7.7.2, §15.2). New optional `retrieve` params: `unit`, `level`, `tokenBudget` (long-context / chunk-explosion packing), `sessionId` (agentic trajectories) — with `retrieve.units`/`levels`/`tokenBudget`/`confidence` metadata (§6.1, §7.7.2–§7.7.3). New optional capabilities `session`, `feedback`, `memory`. New optional methods `feedback` (RL/corrective/integrity signals, client→server) and `memory/build`+`memory/recall` (MemoRAG/HippoRAG global memory → clues) (§7.16–§7.17). Appendix B extended to map Self-RAG, CRAG, Adaptive-RAG, FLARE, DeepRAG/Search-R1, DRIFT, graph granularities, HippoRAG, MemoRAG, RAPTOR, LongRAG, SafeRAG/PoisonedRAG defenses, and RAGAS/ARES eval onto RCP surfaces. No wire break; no change to any pre-existing field. |
 
 ## Appendix F — Evaluation & quality

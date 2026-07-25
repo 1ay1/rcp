@@ -56,12 +56,55 @@ export function makeProgressNotification(token, progress, stage = "", partial = 
   return JSON.stringify({ jsonrpc: "2.0", method: Method.PROGRESS, params });
 }
 
+// Count-like params that share one rule across every method (spec §4.6/§7.7): a
+// value out of RANGE is clamped by the server, but a value of the wrong TYPE or
+// sign is structurally invalid and MUST be -32602. Validating centrally means no
+// handler can forget, and all four SDKs reject the same inputs identically.
+const POSITIVE_INT_FIELDS = ["k", "topN", "candidateK", "n", "hops", "tokenBudget", "limit"];
+
+const isInt = (v) => typeof v === "number" && Number.isInteger(v);
+
+// Returns { code, message, data } when `params` is structurally invalid for
+// `method`, else null. Enforces only method-independent invariants the spec
+// states as MUST; semantic checks stay in the handler.
+function validateParams(method, params) {
+  if (params === null || typeof params !== "object" || Array.isArray(params)) {
+    return { code: Errc.INVALID_PARAMS, message: "'params' MUST be an object" };
+  }
+  for (const field of POSITIVE_INT_FIELDS) {
+    if (!(field in params)) continue;
+    const v = params[field];
+    if (!isInt(v)) {
+      return { code: Errc.INVALID_PARAMS, message: `'${field}' MUST be an integer`, data: { field } };
+    }
+    if (v < 1) {
+      return { code: Errc.INVALID_PARAMS, message: `'${field}' MUST be >= 1`, data: { field } };
+    }
+  }
+  // §3.3 funnel invariant: candidateK >= rerank.topN >= k.
+  const k = params.k;
+  const cand = params.candidateK;
+  const rr = params.rerank;
+  const topN = rr && typeof rr === "object" && isInt(rr.topN) ? rr.topN : null;
+  if (isInt(k) && isInt(cand) && cand < k) {
+    return { code: Errc.INVALID_PARAMS, message: "'candidateK' MUST be >= 'k' (funnel invariant)", data: { field: "candidateK" } };
+  }
+  if (isInt(k) && topN !== null && topN < k) {
+    return { code: Errc.INVALID_PARAMS, message: "'rerank.topN' MUST be >= 'k' (funnel invariant)", data: { field: "rerank.topN" } };
+  }
+  if (isInt(cand) && topN !== null && cand < topN) {
+    return { code: Errc.INVALID_PARAMS, message: "'candidateK' MUST be >= 'rerank.topN' (funnel invariant)", data: { field: "candidateK" } };
+  }
+  return null;
+}
+
 export class Server {
   constructor() {
     this._info = { name: "unknown", version: "0" };
     this._caps = {}; // wire JSON key -> metadata object
     this._handlers = {}; // method string -> (params) => result | Promise<result>
     this._initialized = false;
+    this._negotiated = PROTOCOL_VERSION; // version agreed at handshake (§7.1)
     this._httpServer = null;
   }
 
@@ -102,11 +145,21 @@ export class Server {
     const m = request.method;
     const params = "params" in request ? request.params : {};
 
+    // §4.5: a message with NO `id` is a notification and MUST NOT be answered —
+    // whatever it asks for, known method or not. This check must precede all
+    // dispatch: answering a notification (even with an error) desynchronises a
+    // pipelining client, which correlates strictly by id.
+    if (!("id" in request)) return null;
+
     if (m === Method.INITIALIZE) {
-      this._initialized = true;
       const peer = params && typeof params === "object" ? params.protocolVersion ?? PROTOCOL_VERSION : PROTOCOL_VERSION;
       const neg = negotiateVersion(peer);
       if (neg < MIN_PROTOCOL_VERSION) return err(id, Errc.VERSION_MISMATCH, "no common version");
+      // §7.1: the session is initialized only on a SUCCESSFUL handshake. Setting
+      // this before the version check would leave a server that just rejected
+      // the peer's version fully unlocked.
+      this._initialized = true;
+      this._negotiated = neg;
       return ok(id, this._infoResult(neg));
     }
     if (m === Method.INFO) return ok(id, this._infoResult(PROTOCOL_VERSION));
@@ -114,8 +167,17 @@ export class Server {
       const hasNonce = params && typeof params === "object" && "nonce" in params;
       return ok(id, hasNonce ? { nonce: params.nonce } : {});
     }
-    if (m === Method.CANCEL) return null; // notification: never answered
-    if (m === Method.SHUTDOWN) return ok(id, {});
+    // `notifications/cancel` carrying an `id` is malformed: §7.14 defines it as
+    // a notification only. Reject rather than silently accept.
+    if (m === Method.CANCEL) {
+      return err(id, Errc.INVALID_REQUEST, "'notifications/cancel' is a notification and MUST NOT carry an 'id'");
+    }
+    if (m === Method.SHUTDOWN) {
+      // §7.12/§13: shutdown is always available. It is the graceful twin of
+      // EOF-on-stdin (which is unconditional), leaks nothing, and refusing it
+      // would force a peer to either handshake pointlessly or hard-kill.
+      return ok(id, {});
+    }
 
     if (!this._initialized) return err(id, Errc.NOT_INITIALIZED, "call 'initialize' first");
 
@@ -128,6 +190,10 @@ export class Server {
     const fn = this._handlers[m];
     if (!fn) return err(id, Errc.CAPABILITY_MISSING, `'${m}' not implemented`);
     if (this._caps[cap] == null) return err(id, Errc.CAPABILITY_MISSING, `capability '${cap}' not supported`);
+    // §12: params are validated only after capability gating, so a client learns
+    // "I don't do that at all" before "your argument was malformed".
+    const bad = validateParams(m, params);
+    if (bad) return err(id, bad.code, bad.message, bad.data);
     try {
       const result = await fn(params);
       return ok(id, result ?? {});

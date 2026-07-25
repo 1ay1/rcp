@@ -11,6 +11,7 @@
 // capability check falls through to CapabilityMissing. There is no vtable of
 // null function pointers to trip over.
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -92,22 +93,36 @@ public:
         const Json params = request.contains("params") ? request["params"] : Json::object();
         const Capabilities caps = handler_.capabilities();
 
+        // §4.5: a message with NO `id` is a notification and MUST NOT be
+        // answered — whatever it asks for, known method or not. This check must
+        // precede all dispatch: answering a notification (even with an error)
+        // desynchronises a pipelining client, which correlates strictly by id.
+        if (!request.contains("id")) return Json(nullptr);
+
         if (m == method::Initialize) {
-            initialized_ = true;
             int neg = negotiate_version(params.value("protocolVersion", kProtocolVersion));
             if (neg < kMinProtocolVersion) return err(id, errc::VersionMismatch, "no common version");
+            // §7.1: the session is initialized only on a SUCCESSFUL handshake.
+            // Setting this before the version check would leave a server that
+            // just rejected the peer's version fully unlocked.
+            initialized_ = true;
+            negotiated_ = neg;
             return ok(id, info_result(neg));
         }
         if (m == method::Info)     return ok(id, info_result(kProtocolVersion));
         if (m == method::Ping)     return ok(id, params.contains("nonce")
                                               ? Json{{"nonce", params["nonce"]}} : Json::object());
         if (m == method::Cancel) {
-            // Cancellation is a notification: best-effort, never answered. The
-            // dispatcher is synchronous here, so the target request has already
-            // completed; treat as a no-op and emit no reply.
-            return Json(nullptr);
+            // `notifications/cancel` carrying an `id` is malformed: §7.14 defines
+            // it as a notification only. Reject rather than silently accept.
+            return err(id, errc::InvalidRequest, "'notifications/cancel' is a notification and MUST NOT carry an 'id'");
         }
-        if (m == method::Shutdown) return ok(id, Json::object());
+        if (m == method::Shutdown) {
+            // §7.12/§13: shutdown is always available. It is the graceful twin of
+            // EOF-on-stdin (which is unconditional), leaks nothing, and refusing
+            // it would force a peer to either handshake pointlessly or hard-kill.
+            return ok(id, Json::object());
+        }
 
         if (!initialized_) return err(id, errc::NotInitialized, "call 'initialize' first");
 
@@ -211,6 +226,56 @@ public:
     }
 
 private:
+    // Count-like params that share one rule across every method (spec §4.6/§7.7):
+    // a value out of RANGE is clamped by the server, but a value of the wrong
+    // TYPE or sign is structurally invalid and MUST be -32602. Validating at the
+    // single dispatch choke point means no handler can forget, and all four SDKs
+    // reject the same inputs identically.
+    //
+    // Returns a JSON-RPC `error` object, or null when the params are acceptable.
+    static Json validate_params(const Json& params) {
+        if (!params.is_object())
+            return Json{{"code", errc::InvalidParams}, {"message", "'params' MUST be an object"}};
+
+        static constexpr std::string_view kPositiveIntFields[] = {
+            "k", "topN", "candidateK", "n", "hops", "tokenBudget", "limit"};
+
+        auto bad = [](std::string msg, std::string_view field) {
+            return Json{{"code", errc::InvalidParams},
+                        {"message", std::move(msg)},
+                        {"data", Json{{"field", std::string(field)}}}};
+        };
+
+        for (std::string_view f : kPositiveIntFields) {
+            const std::string key(f);
+            if (!params.contains(key)) continue;
+            const Json& v = params[key];
+            if (!v.is_number_integer() || v.is_boolean())
+                return bad("'" + key + "' MUST be an integer", f);
+            if (v.template get<long long>() < 1)
+                return bad("'" + key + "' MUST be >= 1", f);
+        }
+
+        // §3.3 funnel invariant: candidateK >= rerank.topN >= k.
+        auto int_at = [&](const Json& o, const char* key) -> std::optional<long long> {
+            if (!o.is_object() || !o.contains(key)) return std::nullopt;
+            const Json& v = o[key];
+            if (!v.is_number_integer() || v.is_boolean()) return std::nullopt;
+            return v.template get<long long>();
+        };
+        const auto k    = int_at(params, "k");
+        const auto cand = int_at(params, "candidateK");
+        const auto topN = params.contains("rerank") ? int_at(params["rerank"], "topN") : std::nullopt;
+
+        if (k && cand && *cand < *k)
+            return bad("'candidateK' MUST be >= 'k' (funnel invariant)", "candidateK");
+        if (k && topN && *topN < *k)
+            return bad("'rerank.topN' MUST be >= 'k' (funnel invariant)", "rerank.topN");
+        if (cand && topN && *cand < *topN)
+            return bad("'candidateK' MUST be >= 'rerank.topN' (funnel invariant)", "candidateK");
+        return Json(nullptr);
+    }
+
     Json info_result(int neg) {
         return InitializeResult{neg, handler_.info(), handler_.capabilities()}.to_json();
     }
@@ -220,6 +285,10 @@ private:
             if (!caps.has(cap))
                 return err(id, errc::CapabilityMissing,
                            "capability '" + std::string(to_string(cap)) + "' not supported");
+            // §12: params are validated only after capability gating, so a client
+            // learns "I don't do that at all" before "your argument was malformed".
+            if (Json bad = validate_params(params); !bad.is_null())
+                return Json{{"jsonrpc", "2.0"}, {"id", id}, {"error", std::move(bad)}};
             Result<Json> r = invoke();
             if (!r) return Json{{"jsonrpc", "2.0"}, {"id", id}, {"error", r.error().to_json()}};
             return ok(id, *r);
@@ -289,6 +358,7 @@ private:
 
     H handler_;
     bool initialized_ = false;
+    int  negotiated_  = kProtocolVersion;   // version agreed at handshake (§7.1)
 };
 
 // Deduction guide so `Server srv{MyHandler{}}` works.

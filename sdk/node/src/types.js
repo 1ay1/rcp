@@ -76,6 +76,11 @@ export const Errc = Object.freeze({
   CANCELLED: -32006,
   BACKEND_UNAVAILABLE: -32010,
   RATE_LIMITED: -32011,
+  UNAUTHORIZED: -32012,
+  PAYLOAD_TOO_LARGE: -32013,
+  TIMEOUT: -32014,
+  NOT_FOUND: -32015,
+  CONFLICT: -32016,
 });
 
 // An RCP protocol or transport error, thrown by client calls. `message` is
@@ -90,11 +95,12 @@ export class RcpError extends Error {
     this.data = data;
   }
 
-  // RateLimited / BackendUnavailable are transient by default; an explicit
-  // `data.retryable` overrides the code-based default (spec §12).
+  // RateLimited / BackendUnavailable / Timeout are transient by default; an
+  // explicit `data.retryable` overrides the code-based default (spec §12).
   retryable() {
     if (this.data && typeof this.data.retryable === "boolean") return this.data.retryable;
-    return this.code === Errc.RATE_LIMITED || this.code === Errc.BACKEND_UNAVAILABLE;
+    return this.code === Errc.RATE_LIMITED || this.code === Errc.BACKEND_UNAVAILABLE
+      || this.code === Errc.TIMEOUT;
   }
 
   // Server-suggested backoff in ms (`data.retryAfterMs`), or -1.

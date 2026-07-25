@@ -3,7 +3,95 @@
   "$id": "https://raw.githubusercontent.com/1ay1/rcp/main/schema/rcp-1.0.json",
   "title": "Retrieval Context Protocol 1.0",
   "description": "Normative JSON Schema for all RCP/1 message shapes (SOTA-complete).",
+
+  "$comment": "The root schema validates any single RCP/1 message or a JSON-RPC batch. Per spec §4.6 unknown members are IGNORED, never rejected, so no object here sets additionalProperties:false — forward compatibility is a normative requirement, and a strict schema would make every additive spec revision a breaking change for validators.",
+  "oneOf": [
+    { "$ref": "#/$defs/Message" },
+    { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Message" } }
+  ],
+
   "$defs": {
+    "Message": {
+      "description": "Any single RCP/1 frame: a request, a notification, or a response (§4).",
+      "oneOf": [
+        { "$ref": "#/$defs/JsonRpcRequest" },
+        { "$ref": "#/$defs/JsonRpcNotification" },
+        { "$ref": "#/$defs/JsonRpcSuccess" },
+        { "$ref": "#/$defs/JsonRpcError" }
+      ]
+    },
+
+    "MethodName": {
+      "description": "Every method defined by RCP/1 (§7), plus the vendor-extension namespace (§6.2).",
+      "anyOf": [
+        { "enum": [
+          "initialize", "info", "ping", "shutdown",
+          "embed", "embed/sparse", "embed/multi",
+          "rerank", "retrieve", "query/transform", "graph",
+          "index/add", "index/delete", "catalog/list",
+          "feedback", "memory/build", "memory/recall"
+        ] },
+        { "type": "string", "pattern": "^x-[a-z0-9-]+/" }
+      ]
+    },
+
+    "ResultFor": {
+      "description": "§7: binds a method name to the shape of its `result`. A validator cannot infer the method from a bare response frame (JSON-RPC correlates by `id`), so apply this schema explicitly against `{ method, result }` once the pairing is known — e.g. `{ \"$ref\": \"#/$defs/ResultFor\" }` with the method injected by the harness.",
+      "type": "object",
+      "required": ["method", "result"],
+      "properties": { "method": { "$ref": "#/$defs/MethodName" }, "result": { "type": "object" } },
+      "allOf": [
+        { "if": { "properties": { "method": { "const": "initialize" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/InitializeResult" } } } },
+        { "if": { "properties": { "method": { "const": "info" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/InitializeResult" } } } },
+        { "if": { "properties": { "method": { "const": "ping" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/PingResult" } } } },
+        { "if": { "properties": { "method": { "const": "embed" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/EmbedResult" } } } },
+        { "if": { "properties": { "method": { "const": "embed/sparse" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/SparseEmbedResult" } } } },
+        { "if": { "properties": { "method": { "const": "embed/multi" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/MultiVectorResult" } } } },
+        { "if": { "properties": { "method": { "const": "rerank" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/RerankResult" } } } },
+        { "if": { "properties": { "method": { "const": "retrieve" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/RetrieveResult" } } } },
+        { "if": { "properties": { "method": { "const": "query/transform" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/TransformResult" } } } },
+        { "if": { "properties": { "method": { "const": "graph" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/GraphResult" } } } },
+        { "if": { "properties": { "method": { "const": "index/add" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/IndexAddResult" } } } },
+        { "if": { "properties": { "method": { "const": "index/delete" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/IndexDeleteResult" } } } },
+        { "if": { "properties": { "method": { "const": "catalog/list" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/CatalogListResult" } } } },
+        { "if": { "properties": { "method": { "const": "feedback" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/FeedbackResult" } } } },
+        { "if": { "properties": { "method": { "const": "memory/build" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/MemoryBuildResult" } } } },
+        { "if": { "properties": { "method": { "const": "memory/recall" } }, "required": ["method"] },
+          "then": { "properties": { "result": { "$ref": "#/$defs/MemoryRecallResult" } } } }
+      ]
+    },
+
+    "VectorEncoding": {
+      "description": "§7.3.1: how dense vectors are carried. `json` is an array of numbers and is always supported; `f32-base64` is little-endian IEEE-754 binary32 concatenated and base64-encoded.",
+      "enum": ["json", "f32-base64"]
+    },
+
+    "VectorBatch": {
+      "description": "§7.3.1: a batch of dense vectors — either JSON number arrays, or one base64 string per vector under a binary encoding.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "array", "items": { "type": "number" } },
+          { "type": "string", "contentEncoding": "base64" }
+        ]
+      }
+    },
+
     "PeerInfo": {
       "type": "object",
       "required": ["name"],
@@ -124,7 +212,7 @@
       "additionalProperties": true
     },
     "Content": {
-      "description": "A tagged content block for multimodal retrieval (spec §4.8).",
+      "description": "A tagged content block for multimodal retrieval (spec §4.8). A block carries its body EITHER inline as base64 `data` OR by reference as `uri`, never both. Non-text blocks MUST declare a `mimeType`; a `text` block MUST carry `text`.",
       "type": "object",
       "required": ["type"],
       "properties": {
@@ -132,8 +220,16 @@
         "text": { "type": "string" },
         "mimeType": { "type": "string" },
         "data": { "type": "string", "contentEncoding": "base64" },
-        "uri": { "type": "string" }
-      }
+        "uri": { "type": "string", "format": "uri" }
+      },
+      "not": { "required": ["data", "uri"] },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "text" } }, "required": ["type"] },
+          "then": { "required": ["text"] },
+          "else": { "required": ["mimeType"], "anyOf": [{ "required": ["data"] }, { "required": ["uri"] }] }
+        }
+      ]
     },
     "QueryInput": {
       "description": "A query/passage: a bare string, one Content block, or an array of them.",
@@ -237,27 +333,86 @@
       ]
     },
     "JsonRpcRequest": {
+      "description": "A call that expects exactly one response. §4.1: `id` MUST be a string or number and unique for the connection until answered — it is NOT nullable on a request (a null id belongs to an error response to an unparseable frame), and its absence makes the frame a notification instead.",
+      "type": "object",
+      "required": ["jsonrpc", "id", "method"],
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/RequestId" },
+        "method": { "$ref": "#/$defs/MethodName" },
+        "params": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "properties": { "method": { "const": "initialize" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/InitializeParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "embed" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/EmbedParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "rerank" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/RerankParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "retrieve" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/RetrieveParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "query/transform" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/TransformParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "graph" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/GraphParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "index/add" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/IndexAddParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "index/delete" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/IndexDeleteParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "feedback" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/FeedbackParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "memory/build" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/MemoryBuildParams" } }, "required": ["params"] } },
+        { "if": { "properties": { "method": { "const": "ping" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/PingParams" } } } },
+        { "if": { "properties": { "method": { "const": "catalog/list" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/CatalogListParams" } } } },
+        { "if": { "properties": { "method": { "const": "memory/recall" } }, "required": ["method"] },
+          "then": { "properties": { "params": { "$ref": "#/$defs/MemoryRecallParams" } }, "required": ["params"] } }
+      ]
+    },
+
+    "RequestId": {
+      "description": "§4.1/§4.7: a request id is a string or a number. Numbers SHOULD be integers in the IEEE-754 exactly-representable range so an id survives a round trip through any JSON stack.",
+      "type": ["string", "number"]
+    },
+
+    "JsonRpcNotification": {
+      "description": "§4.5: a frame with NO `id`. It MUST NOT be answered — not even with an error.",
       "type": "object",
       "required": ["jsonrpc", "method"],
+      "not": { "required": ["id"] },
       "properties": {
         "jsonrpc": { "const": "2.0" },
-        "id": { "type": ["string", "number", "null"] },
         "method": { "type": "string" },
         "params": { "type": "object" }
-      }
+      },
+      "allOf": [
+        { "if": { "properties": { "method": { "const": "notifications/progress" } }, "required": ["method"] },
+          "then": { "$ref": "#/$defs/ProgressNotification" } },
+        { "if": { "properties": { "method": { "const": "notifications/cancel" } }, "required": ["method"] },
+          "then": { "$ref": "#/$defs/CancelNotification" } },
+        { "if": { "properties": { "method": { "const": "notifications/log" } }, "required": ["method"] },
+          "then": { "$ref": "#/$defs/LogNotification" } }
+      ]
     },
+
     "JsonRpcSuccess": {
+      "description": "A successful response. `id` MUST equal the id of the request being answered (§4.2).",
       "type": "object",
       "required": ["jsonrpc", "id", "result"],
+      "not": { "required": ["error"] },
       "properties": {
         "jsonrpc": { "const": "2.0" },
-        "id": { "type": ["string", "number", "null"] },
+        "id": { "$ref": "#/$defs/RequestId" },
         "result": { "type": "object" }
       }
     },
     "JsonRpcError": {
+      "description": "An error response (§4.3). `id` echoes the request; it is null ONLY when the request could not be parsed well enough to recover one.",
       "type": "object",
       "required": ["jsonrpc", "id", "error"],
+      "not": { "required": ["result"] },
       "properties": {
         "jsonrpc": { "const": "2.0" },
         "id": { "type": ["string", "number", "null"] },
@@ -265,12 +420,26 @@
           "type": "object",
           "required": ["code", "message"],
           "properties": {
-            "code": { "type": "integer" },
+            "code": { "$ref": "#/$defs/ErrorCode" },
             "message": { "type": "string" },
-            "data": {}
+            "data": { "$ref": "#/$defs/ErrorData" }
           }
         }
       }
+    },
+
+    "ErrorCode": {
+      "description": "§12. JSON-RPC reserved codes plus the RCP range. Codes outside these sets are reserved for future revisions; a receiver MUST treat an unknown code as a generic failure rather than rejecting the frame.",
+      "type": "integer",
+      "anyOf": [
+        { "enum": [
+          -32700, -32600, -32601, -32602, -32603,
+          -32001, -32002, -32003, -32004, -32005, -32006,
+          -32010, -32011,
+          -32012, -32013, -32014, -32015, -32016
+        ] },
+        { "type": "integer" }
+      ]
     },
     "ProgressNotification": {
       "type": "object",
@@ -312,19 +481,25 @@
     },
     "EmbedParams": {
       "type": "object",
-      "anyOf": [ { "required": ["inputs"] }, { "required": ["texts"] } ],
+      "anyOf": [{ "required": ["inputs"] }, { "required": ["texts"] }],
       "properties": {
-        "inputs": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
-        "texts": { "type": "array", "items": { "oneOf": [ { "type": "string" }, { "$ref": "#/$defs/Content" } ] } },
-        "kind": { "enum": ["query", "document"] }
+        "inputs": { "type": "array", "items": { "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/Content" }] } },
+        "texts": { "type": "array", "items": { "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/Content" }] } },
+        "kind": { "enum": ["query", "document"] },
+        "encoding": { "$ref": "#/$defs/VectorEncoding" }
       }
     },
     "EmbedResult": {
       "type": "object",
       "required": ["vectors"],
+      "$comment": "§7.3.1: when `encoding` is f32-base64, `dimension` MUST be present and each decoded blob MUST be exactly dimension×4 bytes.",
       "properties": {
-        "vectors": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } }
-      }
+        "vectors": { "$ref": "#/$defs/VectorBatch" },
+        "encoding": { "$ref": "#/$defs/VectorEncoding" },
+        "dimension": { "type": "integer", "minimum": 1 }
+      },
+      "if": { "properties": { "encoding": { "const": "f32-base64" } }, "required": ["encoding"] },
+      "then": { "required": ["dimension"] }
     },
     "SparseEmbedResult": {
       "type": "object",
@@ -413,6 +588,60 @@
         "rewrittenQuery": { "type": "string" }
       }
     },
+    "GraphResult": {
+      "description": "§7.9: the `graph` result is op-specific. Each branch is the shape required for one `op`; a server MAY include extra keys (§4.6 forward compatibility).",
+      "type": "object",
+      "anyOf": [
+        { "required": ["hits"] },
+        { "required": ["communities"] },
+        { "required": ["nodes"] }
+      ],
+      "properties": {
+        "hits": { "type": "array", "items": { "$ref": "#/$defs/Hit" } },
+        "followups": { "type": "array", "items": { "type": "string" } },
+        "summary": { "type": "string" },
+        "communities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": ["string", "number"] },
+              "summary": { "type": "string" },
+              "score": { "type": "number" },
+              "level": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": ["string", "number"] },
+              "score": { "type": "number" }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["src", "dst"],
+            "properties": {
+              "src": { "type": ["string", "number"] },
+              "dst": { "type": ["string", "number"] },
+              "weight": { "type": "number" }
+            }
+          }
+        },
+        "nextCursor": { "type": "string" },
+        "usage": { "type": "object" },
+        "_meta": { "type": "object" }
+      }
+    },
+
     "TransformParams": {
       "type": "object",
       "required": ["query", "method"],

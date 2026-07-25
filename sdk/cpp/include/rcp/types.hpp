@@ -46,6 +46,11 @@ inline constexpr int OptionUnsupported  = -32005;
 inline constexpr int Cancelled          = -32006;
 inline constexpr int BackendUnavailable = -32010;
 inline constexpr int RateLimited        = -32011;
+inline constexpr int Unauthorized       = -32012;
+inline constexpr int PayloadTooLarge    = -32013;
+inline constexpr int Timeout            = -32014;
+inline constexpr int NotFound           = -32015;
+inline constexpr int Conflict           = -32016;
 } // namespace errc
 
 struct Error {
@@ -69,12 +74,14 @@ struct Error {
         return e;
     }
 
-    // Retryability (spec §12): RateLimited / BackendUnavailable are transient by
-    // default; an explicit `data.retryable` overrides the code-based default.
+    // Retryability (spec §12): RateLimited / BackendUnavailable / Timeout are
+    // transient by default; an explicit `data.retryable` overrides the
+    // code-based default.
     [[nodiscard]] bool retryable() const {
         if (data.is_object() && data.contains("retryable") && data["retryable"].is_boolean())
             return data["retryable"].template get<bool>();
-        return code == errc::RateLimited || code == errc::BackendUnavailable;
+        return code == errc::RateLimited || code == errc::BackendUnavailable
+            || code == errc::Timeout;
     }
     // Server-suggested backoff in milliseconds (`data.retryAfterMs`), or -1.
     [[nodiscard]] long retry_after_ms() const {
