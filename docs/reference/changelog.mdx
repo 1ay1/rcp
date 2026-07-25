@@ -7,6 +7,32 @@ icon: clock-rotate-left
 RCP/1 is **stable**. Changes within the major version are additive and
 capability-discovered; the wire never breaks under you.
 
+<Update label="RCP/1 1.0 · adoption & DX" description="2026 — executable conformance, SDK parity, runnable demos">
+  Closes the distance between a well-written spec and a standard people ship on.
+  No wire change; everything additive.
+
+  - **Executable, level-aware certification.** `conformance/check.py` tags every
+    check L0/L1/L2, reports the highest level a server actually reaches
+    (`CERTIFIED LEVEL: …`), skips checks for unadvertised capabilities, and fails
+    a server that **overclaims** its `_meta.conformance` even with zero failed
+    checks. `--json` emits a CI report; non-zero exit gates a release.
+  - **Reference algorithms in all four SDKs, byte-for-byte identical.**
+    [Reciprocal Rank Fusion](/features/federation#the-fusion-primitive-rrf-fuse)
+    (`rrf_fuse` / `weighted_fuse` — deterministic §16.3 tie-break, richest-body
+    dedup, origin tags) and the compact
+    [`f32-base64` vector codec](/methods/embed#compact-wire-encoding-f32-base64).
+    The C++ live `Federation` now delegates to the same `rcp::fusion::rrf_fuse`.
+  - **Streaming (SSE), end to end.** The Python `Server` gained
+    `stream(method, generator)` and a `Progress` frame type; `serve_http` honours
+    `Accept: text/event-stream`, emitting `notifications/progress` frames then
+    one final response frame — the same handler answers a plain unary POST
+    buffered. See [Streaming](/features/streaming-progress#writing-a-streaming-handler).
+  - **Runnable demos.** `examples/example_streaming.py` (HTTP+SSE progress) and
+    `examples/example_federation.py` (one command: two engines fanned out and
+    RRF-fused). The reference server is now a real dense + sparse → RRF → rerank
+    hybrid pipeline that **certifies L2**.
+</Update>
+
 <Update label="RCP/1 1.0 · robustness" description="2026 — distinctness & abstraction hardening">
   Additive hardening driven by validating RCP against a real third-party engine
   (a [Whoosh](https://github.com/1ay1/rcp/blob/main/examples/whoosh_adapter.py)

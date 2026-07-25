@@ -111,6 +111,29 @@ let mut c = sel.select_capable(rcp::Capability::Retrieve)?;
 `get` / `get_str` / `as_*` accessors, `insert` / `push`, `From` impls, and the
 `rcp::obj(&[(key, value)])` builder — the reason the SDK stays dependency-free.
 
+## Fusion & the vector codec
+
+The reference Reciprocal Rank Fusion (spec §16.3) and the compact `f32-base64`
+embedding codec (§7.3.1) are standalone, unit-tested modules — byte-for-byte
+identical to the Python, Node, and C++ SDKs:
+
+```rust
+use rcp::{fusion, vectors, obj};
+
+// Merge per-engine ranked lists; deterministic tie-break, origin tags.
+let a = vec![obj(&[("id", "x".into())])];
+let b = vec![obj(&[("id", "x".into())]), obj(&[("id", "y".into())])];
+let fused = fusion::rrf_fuse(&[("A", &a), ("B", &b)], Some(10), fusion::RRF_K_DEFAULT, None);
+// fusion::weighted_fuse(&engines, k, weights) when scores are comparable.
+
+// Compact embeddings for the wire.
+let blob = vectors::encode_f32_base64(&vector);
+let back = vectors::decode_f32_base64(&[blob], Some(1024))?;
+```
+
+See [Federation](/features/federation#the-fusion-primitive-rrf-fuse) and
+[compact encoding](/methods/embed#compact-wire-encoding-f32-base64).
+
 ## Test
 
 ```sh

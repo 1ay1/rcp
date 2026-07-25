@@ -235,11 +235,24 @@ cd sdk/rust
 cargo test     # in-proc server + client↔C++ server + registry selector
 ```
 
-**Conformance** — validate any server, in any language:
+**Conformance** — validate and *certify* any server, in any language. The
+level-aware harness reports the level a server actually reaches (L0/L1/L2), skips
+unadvertised-capability checks, and fails a server that overclaims its declared
+level:
 
 ```sh
 python3 conformance/check.py -- python3 examples/example_server.py
-python3 conformance/check.py -- ./sdk/cpp/example_server
+#   26 passed, 0 failed, 0 skipped
+#   CERTIFIED LEVEL: L2
+python3 conformance/check.py -- ./sdk/cpp/example_server   # also certifies L2
+python3 conformance/check.py --json -- python3 examples/example_server.py  # CI report
+```
+
+**Runnable demos** — the headline features, end to end, with only Python 3:
+
+```sh
+python3 examples/example_streaming.py    # HTTP+SSE: watch a retrieve funnel stream progress
+python3 examples/example_federation.py   # one command: two engines fanned out + RRF-fused
 ```
 
 ## Repository layout
@@ -250,8 +263,10 @@ python3 conformance/check.py -- ./sdk/cpp/example_server
 - `sdk/python/` — the native Python `rcp` package (standard library only).
 - `sdk/node/` — the native Node.js `rcp-protocol` package (standard library only).
 - `sdk/rust/` — the native Rust `rcp-protocol` crate (zero dependencies).
-- `conformance/` — transport-agnostic conformance suite.
-- `examples/` — runnable Python client/server.
+- `conformance/` — transport-agnostic, level-aware conformance & certification suite.
+- `examples/` — runnable Python client/server, plus HTTP+SSE streaming
+  (`example_streaming.py`) and a one-command federation demo
+  (`example_federation.py`).
 - `docs/` — the documentation website ([Mintlify](https://mintlify.com)); each
   protocol concept is its own readable page. The spec and schema stay the source
   of truth; the site links them and syncs the schema.

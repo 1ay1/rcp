@@ -50,7 +50,10 @@ server advertises only what it implements, and a client sees the rest as absent.
   <Step title="Fuse — merge the lists" icon="code-merge">
     When recall runs more than one matcher, their scores are not comparable, so
     the ranked lists are merged by **rank**: reciprocal-rank fusion (`rrf`) or a
-    `weighted` blend. Controlled by `retrieve.fusion`.
+    `weighted` blend. Controlled by `retrieve.fusion`. The exact algorithm is
+    available as a reference primitive —
+    [`rrf_fuse` / `weighted_fuse`](/features/federation#the-fusion-primitive-rrf-fuse)
+    — in every SDK, so client-side fusion matches server-side byte-for-byte.
   </Step>
   <Step title="Rerank — score precisely" icon="arrow-down-wide-short">
     Rescore the surviving candidates with an expensive, accurate model: a

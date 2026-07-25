@@ -149,6 +149,82 @@ footgun.
   fused hit **SHOULD** keep the richest body and merge `meta`. Each fused hit
   carries its origin in `meta.engine`.
 
+### The fusion primitive — `rrf_fuse`
+
+You don't need the full `Federation` facade to fuse. Every reference SDK exports
+the fusion algorithm as a **standalone, tested function** over ranked lists you
+already hold — a cache, a replay, two hand-issued `retrieve` calls — so no
+adopter re-derives §16.3 (and re-derives it subtly wrong). All four are
+byte-for-byte identical: same tie-break, same richest-body dedup, same origin
+tagging in `meta.engine` and `meta.fusedScore`.
+
+<CodeGroup>
+```python Python
+fused = rcp.rrf_fuse(
+    {"dense": dense_hits, "sparse": sparse_hits},   # engine id -> ranked list
+    k=10,
+    weights={"dense": 1.0, "sparse": 0.7},          # optional per-engine weights
+)
+# rcp.weighted_fuse(...) instead when engine scores ARE comparable
+# (it min-max normalises per engine first).
+for h in fused:
+    print(h["id"], h["meta"]["engine"], h["meta"]["fusedScore"])
+```
+
+```js Node.js
+const fused = rcp.rrfFuse(
+  { dense: denseHits, sparse: sparseHits },
+  { k: 10, weights: { dense: 1.0, sparse: 0.7 } },
+);
+// rcp.weightedFuse(lists, { k, weights }) for comparable scores.
+```
+
+```rust Rust
+use rcp::fusion;
+let fused = fusion::rrf_fuse(
+    &[("dense", &dense_hits), ("sparse", &sparse_hits)],
+    Some(10),                    // k
+    fusion::RRF_K_DEFAULT,       // 60
+    Some(&weights),              // Option<&HashMap<String, f64>>
+);
+// fusion::weighted_fuse(&engines, k, weights) for comparable scores.
+```
+
+```cpp C++
+using rcp::fusion::EngineList;
+std::vector<EngineList> engines = {
+    {"dense", dense_hits, 1.0}, {"sparse", sparse_hits, 0.7}};
+auto fused = rcp::fusion::rrf_fuse(engines, /*k=*/10);
+// rcp::fusion::weighted_fuse(engines, k) for comparable scores.
+// The live Federation delegates to this same function.
+```
+</CodeGroup>
+
+The default `rrfK` is **60** (`rcp.RRF_K_DEFAULT` / `fusion::RRF_K_DEFAULT`). The
+live C++ `Federation` calls the very same `rcp::fusion::rrf_fuse`, so fan-out
+fusion and held-list fusion agree exactly.
+
+### One command: fan out and fuse
+
+[`examples/example_federation.py`](https://github.com/1ay1/rcp/blob/main/examples/example_federation.py)
+is spec §16 made runnable in a single process — it spawns two genuinely
+independent engine subprocesses (each its own corpus), fans one query out to
+both, and fuses their rankings with `rcp.rrf_fuse`:
+
+```sh
+python3 examples/example_federation.py
+# [papers] returned 2: ['p-rrf', 'p-colbert']
+# [web   ] returned 1: ['w-rrf']
+#
+# fused top-3 (RRF, weights={'papers': 1.0, 'web': 0.7}):
+#   1. p-rrf      engine=papers  fusedScore=0.01639
+#   2. p-colbert  engine=papers  fusedScore=0.01613
+#   3. w-rrf      engine=web     fusedScore=0.01148
+```
+
+No servers to start, no ports, no config — the whole federation lives and dies
+with the process.
+
 ## Federated capabilities
 
 A client's *effective* capability set over a federation is the **union** of its

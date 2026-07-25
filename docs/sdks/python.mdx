@@ -84,6 +84,41 @@ sel = rcp.Selector.load("rcp.json")
 c = sel.select_capable(rcp.Capability.Retrieve)   # highest-priority live engine
 ```
 
+## Fusion, streaming & the vector codec
+
+The reference implementations of three spec algorithms ship as importable,
+tested helpers — identical across all four SDKs, so no adopter re-derives them:
+
+```python
+# Reciprocal Rank Fusion of per-engine ranked lists (spec §16.3).
+fused = rcp.rrf_fuse({"dense": dense, "sparse": sparse}, k=10,
+                     weights={"dense": 1.0, "sparse": 0.7})
+# rcp.weighted_fuse(...) when engine scores are comparable.
+
+# Compact f32-base64 embedding codec (spec §7.3.1, ~4× smaller than JSON).
+payload, meta = rcp.encode_vectors(vectors, "f32-base64")
+vectors = rcp.decode_vectors(payload, meta["encoding"], meta["dimension"])
+```
+
+A **streaming** handler is a generator that `yield`s `rcp.Progress` and `return`s
+the result; over HTTP+SSE the frames stream live, over a plain request the same
+handler returns one buffered response:
+
+```python
+def retrieve(params):
+    yield rcp.Progress(0.5, "recall")
+    yield rcp.Progress(1.0, "rerank")
+    return {"hits": hits}
+
+s.advertise(rcp.Capability.Streaming)
+s.stream("retrieve", retrieve)     # serve_http honours Accept: text/event-stream
+```
+
+See [Federation](/features/federation#the-fusion-primitive-rrf-fuse),
+[Streaming](/features/streaming-progress#writing-a-streaming-handler), and
+[compact encoding](/methods/embed#compact-wire-encoding-f32-base64). Runnable:
+`examples/example_federation.py` and `examples/example_streaming.py`.
+
 ## Test
 
 ```sh

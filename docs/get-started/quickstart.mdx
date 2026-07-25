@@ -210,6 +210,28 @@ engines live at `sdk/rust/examples/example_server.rs` and
 [C++](/sdks/cpp) SDK pages walk through them.
 </Note>
 
+## Go further — two runnable demos
+
+Once the basics click, two self-contained programs show off the parts of RCP
+that sell it. Both run with only Python 3, no models, no config:
+
+<CardGroup cols={2}>
+  <Card title="Streaming (HTTP + SSE)" icon="wave-square" href="/features/streaming-progress">
+    ```sh
+    python3 examples/example_streaming.py
+    ```
+    A real HTTP server streams `notifications/progress` frames as a 3-stage
+    retrieve funnel fills, then the final response — over one SSE connection.
+  </Card>
+  <Card title="Federation (fan out + fuse)" icon="diagram-project" href="/features/federation">
+    ```sh
+    python3 examples/example_federation.py
+    ```
+    One command spawns two independent engines, fans a query out, and fuses
+    their rankings with `rcp.rrf_fuse` — origin tags and per-engine weights.
+  </Card>
+</CardGroup>
+
 ## What just happened
 
 Every RCP session is the same three beats, in every language:

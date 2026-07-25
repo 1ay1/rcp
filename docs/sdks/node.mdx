@@ -86,6 +86,28 @@ const sel = rcp.Selector.load("rcp.json");
 const c = await sel.selectCapable(rcp.Capability.Retrieve);
 ```
 
+## Fusion & the vector codec
+
+The reference Reciprocal Rank Fusion (spec §16.3) and the compact `f32-base64`
+embedding codec (§7.3.1) ship here too — byte-for-byte identical to the Python,
+Rust, and C++ SDKs:
+
+```js
+// Merge per-engine ranked lists; deterministic tie-break, origin tags.
+const fused = rcp.rrfFuse(
+  { dense: denseHits, sparse: sparseHits },
+  { k: 10, weights: { dense: 1.0, sparse: 0.7 } },
+);
+// rcp.weightedFuse(lists, { k, weights }) when scores are comparable.
+
+// Compact embeddings for the wire (~4× smaller than JSON numbers).
+const { payload, meta } = rcp.encodeVectors(vectors, rcp.F32_BASE64);
+const back = rcp.decodeVectors(payload, meta.encoding, meta.dimension);
+```
+
+See [Federation](/features/federation#the-fusion-primitive-rrf-fuse) and
+[compact encoding](/methods/embed#compact-wire-encoding-f32-base64).
+
 ## Test
 
 ```sh

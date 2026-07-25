@@ -56,6 +56,58 @@ For backward compatibility a server **MUST** also accept the legacy field name
 `texts` as a synonym for `inputs`. Requests **SHOULD** respect `embed.batchLimit`.
 </Note>
 
+### Compact wire encoding (`f32-base64`)
+
+JSON numbers are a poor carrier for embeddings: a 1000×1024 `float32` batch is
+~10–20 MB as decimal text but only ~4 MB as raw bytes. A server that advertises
+it lets a client opt into a binary encoding per request (spec §7.3.1):
+
+```json
+"embed": { "dimension": 1024, "encodings": ["json", "f32-base64"] }
+```
+
+- **`json`** — an array of JSON numbers. Always supported; the default and
+  fallback, so a client that ignores this feature is never broken.
+- **`f32-base64`** — the vector as little-endian IEEE-754 `binary32`, concatenated
+  and base64-encoded (RFC 4648 §4, with padding). Byte order is little-endian
+  regardless of host, so the wire is reproducible across platforms.
+
+The client sends `"encoding": "f32-base64"`; the server **MUST** echo the encoding
+it used and **MUST NOT** use one the client did not request. Requesting an
+unadvertised encoding is `-32005` (`OptionUnsupported`).
+
+```json Response (f32-base64)
+{ "jsonrpc": "2.0", "id": 1, "result": {
+    "vectors": ["ZGF0YQ==", "…"], "encoding": "f32-base64", "dimension": 1024 } }
+```
+
+Every reference SDK ships the codec — byte-for-byte identical, dependency-free —
+so servers encode and clients decode without hand-rolling base64:
+
+<CodeGroup>
+```python Python
+payload, meta = rcp.encode_vectors(vectors, "f32-base64")
+# meta -> {"encoding": "f32-base64", "dimension": 1024}
+vectors = rcp.decode_vectors(payload, meta["encoding"], meta["dimension"])
+```
+
+```js Node.js
+const { payload, meta } = rcp.encodeVectors(vectors, rcp.F32_BASE64);
+const vectors = rcp.decodeVectors(payload, meta.encoding, meta.dimension);
+```
+
+```rust Rust
+use rcp::vectors;
+let enc  = vectors::encode_f32_base64(&vector);          // -> String blob
+let back = vectors::decode_f32_base64(&[enc], Some(1024))?;
+```
+
+```cpp C++
+auto blob = rcp::vectors::encode_f32_base64(vector);     // std::string
+auto back = rcp::vectors::decode_f32_base64(blob, /*dimension=*/1024);
+```
+</CodeGroup>
+
 ## `embed/sparse` — learned-sparse
 
 Gated by **`sparseEmbed`**. Each entry is a sparse vector over the model

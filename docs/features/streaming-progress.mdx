@@ -72,6 +72,69 @@ sends `Accept: text/event-stream` receives them as Server-Sent Events — zero o
 more `notifications/progress` frames, then one final frame carrying the JSON-RPC
 response. See [Transports](/concepts/transports#streaming-sse).
 
+Each SSE frame is a single `data:` line whose payload is a compact JSON object,
+terminated by a blank line; the stream ends after the final response frame. A
+client that did **not** ask for SSE gets one buffered JSON response instead — so
+the same server handler serves both callers.
+
+## Writing a streaming handler
+
+The reference Python SDK turns this into one idiom: a **generator** handler that
+`yield`s `rcp.Progress` events and `return`s the final result. Register it with
+`Server.stream(...)` and advertise `streaming`. `serve_http` flushes each
+`Progress` as a `notifications/progress` frame the instant it is produced, then
+sends the final response frame; a plain unary POST drains the same generator and
+returns only the result.
+
+```python
+import rcp
+
+def retrieve(params):
+    query, k = params["query"], params.get("k", 5)
+    dense  = recall_dense(query)
+    yield rcp.Progress(0.33, "recall:dense", partial=[h["id"] for h in dense[:k]])
+
+    fused  = rcp.rrf_fuse({"dense": dense, "sparse": recall_sparse(query)}, k=k * 2)
+    yield rcp.Progress(0.66, "fuse:rrf", partial=[h["id"] for h in fused[:k]])
+
+    hits   = rerank(query, fused)[:k]
+    yield rcp.Progress(1.0, "rerank", partial=[h["id"] for h in hits])
+    return {"hits": hits, "mode": "hybrid"}
+
+s = rcp.Server()
+s.set_info("streaming-demo", "1.0")
+s.advertise(rcp.Capability.Retrieve, {"maxK": 100, "modes": ["hybrid"]})
+s.advertise(rcp.Capability.Streaming)   # required for the SSE path
+s.stream("retrieve", retrieve)
+s.serve_http(8000)
+```
+
+<ResponseField name="rcp.Progress(progress, stage='', partial=None)" type="frame">
+  A progress event. `progress` is `0.0–1.0`; `stage` names the pipeline phase;
+  `partial` is an optional early-result payload. Serialised into a
+  `notifications/progress` frame carrying the request's `progressToken` — emitted
+  only when the client supplied one.
+</ResponseField>
+
+<Note>
+The handler is written **once** and works both ways. Over SSE the frames stream
+live; over a plain request the generator is drained and only its `return` value
+is sent — satisfying §13's rule that a non-SSE client MUST get a single buffered
+JSON response.
+</Note>
+
+A complete, self-contained program — a real HTTP+SSE server plus a raw-socket
+client that prints each frame as the retrieve funnel fills — lives at
+[`examples/example_streaming.py`](https://github.com/1ay1/rcp/blob/main/examples/example_streaming.py):
+
+```sh
+python3 examples/example_streaming.py
+#   progress  33%  recall:dense   partial=['d2', 'd5', 'd1']
+#   progress  66%  fuse:rrf       partial=['d2', 'd5', 'd1']
+#   progress 100%  rerank         partial=['d2', 'd5', 'd1']
+#   final response frame: hits = ['d2', 'd5', 'd1'] …
+```
+
 <Tip>
 Progress pairs naturally with cancellation: stream partial hits, let the user act
 on them, and send [`notifications/cancel`](/concepts/lifecycle#cancellation) if

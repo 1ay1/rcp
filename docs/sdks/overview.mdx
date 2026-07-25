@@ -37,6 +37,11 @@ shared conformance runner.
 - A **`filter`** module — a typed [builder + server-side validator](/features/metadata-filtering#the-canonical-builder-validator)
   for metadata filters, so clients never hand-write filter JSON and servers turn
   a malformed tree into a clean `-32602` instead of a `-32603` crash.
+- **Reference algorithms** as importable, tested code, byte-for-byte identical
+  across all four SDKs: [Reciprocal Rank Fusion](/features/federation#the-fusion-primitive-rrf-fuse)
+  (`rrf_fuse` / `weighted_fuse`) and the compact
+  [`f32-base64` vector codec](/methods/embed#compact-wire-encoding-f32-base64) —
+  so no adopter re-derives the spec's fusion or encoding rules.
 - Uniform errors surfaced as a typed error whose message is
   `"[RCP <code>] <message>"`, exposing `.code`, `.data`, `retryable()`.
 
@@ -52,6 +57,8 @@ The four SDKs deliberately mirror each other (idiomatic per language):
 | Advertise | `Capabilities{}.with_retrieve({…})` | `s.advertise(Capability.Retrieve, {…})` | `s.advertise(Capability.Retrieve, {…})` | `s.advertise(Capability::Retrieve, meta)` |
 | Handle | concept-gated hook | `@s.on(Method.RETRIEVE)` | `s.on(Method.RETRIEVE, fn)` | `s.on(Method::RETRIEVE, \|p\| …)` |
 | Serve | `srv.serve_stdio()` | `s.serve_stdio()` | `await s.serveStdio()` | `s.serve_stdio()` |
+| Fuse (RRF) | `fusion::rrf_fuse(engines, k)` | `rcp.rrf_fuse(lists, k=…)` | `rcp.rrfFuse(lists, { k })` | `fusion::rrf_fuse(&engines, Some(k), …)` |
+| Vector codec | `vectors::encode_f32_base64(v)` | `rcp.encode_vectors(v, "f32-base64")` | `rcp.encodeVectors(v, rcp.F32_BASE64)` | `vectors::encode_f32_base64(&v)` |
 
 <Info>
 Cross-language interop is not aspirational: the Python and Node test suites each

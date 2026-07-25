@@ -65,8 +65,24 @@ python3 conformance/check.py --http http://127.0.0.1:8000/rcp
 ```
 </CodeGroup>
 
-All four reference example servers pass **10/10** over both stdio and HTTP, and
-every SDK's client drives every other SDK's server.
+The harness is **level-aware**: it tags every check L0/L1/L2, skips the checks
+for capabilities a server doesn't advertise, and prints the highest level the
+server actually reaches:
+
+```
+26 passed, 0 failed, 0 skipped
+CERTIFIED LEVEL: L2
+declared _meta.conformance='L2' — consistent
+```
+
+It also **cross-checks honesty**: a server that declares `_meta.conformance: "L2"`
+but only certifies L1 is flagged as `OVERCLAIMED` and the run exits non-zero —
+even with zero failed checks — so a badge can't lie. Pass `--json` for a
+CI-consumable report; the non-zero exit gates a release pipeline.
+
+The Python and C++ reference example servers both **certify L2** (a real
+dense + sparse → RRF → rerank hybrid pipeline), and every SDK's client drives
+every other SDK's server over both stdio and HTTP.
 
 ## Conforming clients
 
