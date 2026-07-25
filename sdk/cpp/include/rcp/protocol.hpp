@@ -145,6 +145,36 @@ struct Capabilities {
         if (!modalities.empty()) (*retrieve)["modalities"] = std::move(modalities);
         return *this;
     }
+
+    // Declare the fusion strategies this server implements for mode:"hybrid"
+    // (spec §6.1 / §16.3). `with_retrieve` advertises just {"rrf"} because RRF
+    // is the one strategy every server can always perform; call this to add
+    // "weighted" or "convex".
+    Capabilities& with_fusion(std::vector<std::string> methods) {
+        if (!retrieve) retrieve = Json::object();
+        (*retrieve)["fusion"] = std::move(methods);
+        return *this;
+    }
+
+    // Describe this server's score scale (§6.1).
+    //
+    // `floor` is the THEORETICAL minimum of Hit.score — the value the scoring
+    // function cannot go below regardless of corpus or query (-1 for cosine, 0
+    // for BM25 or a non-negative embedding space). It is the only score
+    // metadata that is portable across servers, because it is a property of the
+    // function and not of any result set, and it is what lets a client fuse by
+    // convex combination (§16.3) instead of falling back to rank-only RRF.
+    //
+    // Pass std::nullopt when the floor is not genuinely known: a guessed floor
+    // silently distorts every downstream fusion, so omitting it is strictly
+    // better than approximating it.
+    Capabilities& with_score_scale(std::string scale,
+                                   std::optional<double> floor = std::nullopt) {
+        if (!retrieve) retrieve = Json::object();
+        (*retrieve)["scoreScale"] = std::move(scale);
+        if (floor) (*retrieve)["scoreFloor"] = *floor;
+        return *this;
+    }
     Capabilities& with_rerank(std::vector<std::string> methods) {
         rerank = Json{{"methods", std::move(methods)}};
         return *this;

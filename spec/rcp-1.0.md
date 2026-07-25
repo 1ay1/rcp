@@ -506,7 +506,7 @@ field inside a known capability, as informational and ignore it (§6.2).
 { "retrieve": {
     "maxK": 200,
     "modes": ["dense", "sparse", "hybrid"],
-    "fusion": ["rrf", "weighted"],
+    "fusion": ["rrf", "weighted", "convex"],
     "mmr": true,
     "rerankBuiltin": true,
     "units": ["chunk", "document", "tree-node", "community"],
@@ -514,6 +514,7 @@ field inside a known capability, as informational and ignore it (§6.2).
     "tokenBudget": true,
     "confidence": true,
     "scoreScale": "cosine",
+    "scoreFloor": -1.0,
     "defaultMode": "hybrid"
 } }
 ```
@@ -533,10 +534,29 @@ field inside a known capability, as informational and ignore it (§6.2).
   `"probability"` (already `[0,1]`), or `"unbounded"` (engine-relative, e.g. raw
   BM25F). This is **informational**: it lets a client label or bucket scores, but
   it does **not** make scores from different servers comparable. Cross-server
-  ranking and fusion **MUST** use rank position (RRF, §16.3) or the normalised
-  `confidence` field (§7.7.2) — never raw `score` — because `score` is
-  server-scaled (§4.6) even when `scoreScale` is advertised. Absent, a client
-  **MUST NOT** assume any particular scale.
+  ranking and fusion **MUST** use rank position (RRF, §16.3), the normalised
+  `confidence` field (§7.7.2), or — when `scoreFloor` is advertised — convex
+  combination (§16.3); never raw `score`, because `score` is server-scaled
+  (§4.6) even when `scoreScale` is advertised. Absent, a client **MUST NOT**
+  assume any particular scale.
+- `scoreFloor` — the **theoretical minimum** of this server's `Hit.score`: the
+  value the scoring function cannot go below, *independent of the corpus and of
+  the query*. Typical values are `-1.0` for cosine, `0.0` for BM25 and for
+  cosine over non-negative embeddings, and `0.0` for probabilities. This is the
+  one piece of score metadata that IS portable, because it is a property of the
+  function rather than of any result set, and it is what makes convex-combination
+  fusion (§16.3) well-defined across servers. Servers **SHOULD** advertise it
+  when the floor is genuinely known; a server whose scores have no principled
+  lower bound **MUST** omit it rather than guess, since a wrong floor silently
+  distorts every fusion a client performs. Clients **MUST NOT** infer a floor
+  from `scoreScale` alone.
+
+  Note there is deliberately no `scoreCeiling`. A theoretical maximum is usually
+  either unknown (BM25) or never approached in practice (cosine reaches `1.0`
+  only for an exact duplicate), and normalising against a ceiling real scores
+  never reach compresses that engine's contribution and quietly strips it of
+  influence in the fused ranking. The observed maximum of the returned set is
+  the correct upper endpoint.
 
 Servers **MAY** add extension capability keys prefixed `x-<vendor>`; clients
 **MUST** ignore unrecognised keys.
@@ -750,7 +770,7 @@ advertised `retrieve` capability.
   "mode"?: "dense"|"sparse"|"hybrid",
   "modality"?: "text"|"image"|"audio"|"code"|"multimodal",  // default "text" (§4.8)
   "candidateK"?: 100,               // recall-stage candidate count before rerank
-  "fusion"?: { "method": "rrf"|"weighted", "weights"?: {"dense":0.5,"sparse":0.5}, "rrfK"?: 60 },
+  "fusion"?: { "method": "rrf"|"weighted"|"convex", "weights"?: {"dense":0.5,"sparse":0.5}, "rrfK"?: 60, "alpha"?: 0.5 },
   "rerank"?: { "method": "cross-encoder"|"colbert"|"llm", "model"?: "…", "topN"?: 10 } | false,
   "mmr"?: { "lambda": 0.5 },        // diversification (0=max diversity,1=pure relevance)
   "rewrite"?: "rewrite"|"hyde"|"multi-query"|"decompose"|false,
@@ -1653,9 +1673,44 @@ norm_engine(d) = (score_engine(d) - min_engine) / (max_engine - min_engine)
 Fused(d)       = Σ_engine  weight_engine · norm_engine(d)
 ```
 
-RRF is preferred by default precisely because it sidesteps this normalisation
-footgun. A client **MAY** also run a second-stage cross-encoder `rerank` over the
-union of candidates — the most accurate option when one engine offers `rerank`.
+**Convex combination** (`"convex"`) is the third strategy, and the one to
+prefer when every participating engine advertises a `scoreFloor` (§6.1). It is
+weighted score fusion with one change: the *minimum* of the normalisation
+interval is the engine's declared theoretical floor rather than the smallest
+score that happened to come back.
+
+```
+norm_engine(d) = (score_engine(d) - scoreFloor_engine)
+               / (max_engine     - scoreFloor_engine)
+Fused(d)       = α · norm_dense(d) + (1-α) · norm_lexical(d)      α default 0.5
+```
+
+The substitution matters because plain min-max derives *both* endpoints from
+the returned set, so the worst hit in every response normalises to exactly
+`0` — a result set where everything is excellent and one where everything is
+irrelevant become indistinguishable after normalisation. Anchoring the floor to
+a value the scoring function guarantees (cosine ≥ -1; BM25 ≥ 0) removes one of
+the two data-dependent statistics and makes the mapping stable across queries
+and across servers.
+
+This is the TM2C2 fusion of Bruch et al., *An Analysis of Fusion Functions for
+Hybrid Retrieval* (ACM TOIS 42(1), 2023), which reports that it "significantly
+outperforms RRF on all datasets in terms of NDCG" in both in-domain and
+zero-shot settings, and that RRF — usually described as parameter-free — is in
+fact sensitive to `rrfK`.
+
+RRF remains the **default** because it is the only strategy that is always
+available: it needs no bounds, no comparable scores, and no capability
+negotiation, so it is the correct floor for a protocol that must fuse arbitrary
+heterogeneous engines. A client **SHOULD** prefer `convex` when the engines it
+is fusing all advertise `scoreFloor`, and **MUST** fall back to RRF when any of
+them does not. Clients **SHOULD** treat `α` as tunable: the optimum depends on
+the relative strength of the engines being fused, not on the protocol.
+
+RRF is preferred as the *default* precisely because it sidesteps the
+normalisation footgun. A client **MAY** also run a second-stage cross-encoder
+`rerank` over the union of candidates — the most accurate option when one engine
+offers `rerank`.
 
 **Tie-breaking.** Ties in the fused score **MUST** be broken deterministically so
 fusion is reproducible: order by (1) higher fused score, then (2) higher summed

@@ -143,7 +143,7 @@
             "maxK": { "type": "integer", "minimum": 1 },
             "modes": { "type": "array", "items": { "enum": ["dense", "sparse", "hybrid"] } },
             "modalities": { "type": "array", "items": { "enum": ["text", "image", "audio", "code", "multimodal"] } },
-            "fusion": { "type": "array", "items": { "enum": ["rrf", "weighted"] } },
+            "fusion": { "type": "array", "items": { "enum": ["rrf", "weighted", "convex"] } },
             "mmr": { "type": "boolean" },
             "rerankBuiltin": { "type": "boolean" },
             "deterministic": { "type": "boolean" },
@@ -153,6 +153,7 @@
             "tokenBudget": { "type": "boolean" },
             "confidence": { "type": "boolean" },
             "scoreScale": { "enum": ["cosine", "dot", "bm25", "probability", "unbounded"] },
+            "scoreFloor": { "type": "number" },
             "defaultMode": { "enum": ["dense", "sparse", "hybrid"] }
           }
         },
@@ -548,9 +549,10 @@
         "fusion": {
           "type": "object",
           "properties": {
-            "method": { "enum": ["rrf", "weighted"] },
+            "method": { "enum": ["rrf", "weighted", "convex"] },
             "weights": { "type": "object", "additionalProperties": { "type": "number" } },
-            "rrfK": { "type": "integer" }
+            "rrfK": { "type": "integer" },
+            "alpha": { "type": "number", "minimum": 0, "maximum": 1 }
           }
         },
         "rerank": {
