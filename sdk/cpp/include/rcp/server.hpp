@@ -115,8 +115,33 @@ public:
     explicit Server(H handler) : handler_(std::move(handler)) {}
 
     // Handle one JSON-RPC request object → reply object. Never throws.
+    //
+    // This guarantee is LOAD-BEARING and used to be a lie. Dispatch runs both
+    // SDK code and arbitrary handler code over params the peer controls, and
+    // nlohmann::json throws type_error on a bad `.get<T>()` — so a single
+    // malformed field (e.g. `"protocolVersion": "1.0"` as a string where the
+    // spec says integer) escaped as an exception, hit no catch, and called
+    // std::terminate. On a stdio server that is the whole PROCESS dying on one
+    // bad line: an unauthenticated remote kill, and for an engine serving a
+    // corpus it also drops every unsaved write.
+    //
+    // A protocol error must be a protocol RESPONSE, never a crash. Anything
+    // that escapes is reported as -32603 against the request's own id, so the
+    // peer stays synchronized and the session survives.
     [[nodiscard]] Json handle(const Json& request) {
-        Json id = request.contains("id") ? request["id"] : Json(nullptr);
+        Json id = (request.is_object() && request.contains("id")) ? request["id"] : Json(nullptr);
+        try {
+            return handle_unguarded(request);
+        } catch (const std::exception& e) {
+            return err(id, errc::InternalError, std::string("unhandled exception: ") + e.what());
+        } catch (...) {
+            return err(id, errc::InternalError, "unhandled exception");
+        }
+    }
+
+private:
+    [[nodiscard]] Json handle_unguarded(const Json& request) {
+        Json id = (request.is_object() && request.contains("id")) ? request["id"] : Json(nullptr);
         if (!request.is_object() || !request.contains("method") || !request["method"].is_string())
             return err(id, errc::InvalidRequest, "missing 'method'");
         const std::string m = request["method"].get<std::string>();
@@ -136,6 +161,11 @@ public:
             // repeat BEFORE any success (e.g. retry after a version mismatch)
             // is still allowed and falls through to normal negotiation.
             if (initialized_) return err(id, errc::InvalidRequest, "already initialized; re-negotiation is not permitted mid-session");
+            // A `protocolVersion` of the wrong JSON type is the peer's error,
+            // not ours: report -32602 rather than letting json's type_error
+            // escape as a generic internal failure. Absent is fine (defaults).
+            if (params.contains("protocolVersion") && !params["protocolVersion"].is_number_integer())
+                return err(id, errc::InvalidParams, "'protocolVersion' must be an integer");
             int neg = negotiate_version(params.value("protocolVersion", kProtocolVersion));
             if (neg < kMinProtocolVersion) return err(id, errc::VersionMismatch, "no common version");
             // §7.1: the session is initialized only on a SUCCESSFUL handshake.
@@ -166,6 +196,8 @@ public:
         // models the hook; otherwise the capability is treated as absent.
         return dispatch(id, m, params, caps);
     }
+
+public:
 
     [[nodiscard]] std::string handle_line(const std::string& line) {
         Json msg;

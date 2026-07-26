@@ -418,6 +418,49 @@ int main() {
         CHECK(b.has_value() && (*b)["encoding"] == "f32-base64" && (*b)["dimension"] == 4);
     }
 
+    // ── A malformed request must produce an ERROR, never terminate ─────────
+    //
+    // Server::handle documents "never throws", and that guarantee is what keeps
+    // a stdio server alive: dispatch runs SDK code and arbitrary handler code
+    // over peer-controlled params, and nlohmann::json throws type_error on a
+    // bad .get<T>(). It used to escape uncaught — one line of malformed JSON
+    // called std::terminate and killed the whole process, taking any unsaved
+    // engine state with it. That is an unauthenticated remote kill.
+    {
+        Server<MiniHandler> s{MiniHandler{}};
+
+        // Wrong TYPE for a spec'd integer field. -32602, and the session lives.
+        auto bad_ver = s.handle(Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "initialize"},
+                                     {"params", {{"protocolVersion", "1.0"}}}});
+        CHECK(bad_ver["error"]["code"] == errc::InvalidParams);
+
+        // The rejected handshake must NOT have initialized the session
+        // (§7.1), and a real handshake must still succeed afterwards.
+        auto good = s.handle(Json{{"jsonrpc", "2.0"}, {"id", 2}, {"method", "initialize"},
+                                  {"params", {{"protocolVersion", 1}}}});
+        CHECK(good.contains("result"));
+
+        // Wrong types in assorted places: each must come back as a response
+        // object with an id, not crash the process.
+        const Json malformed[] = {
+            Json{{"jsonrpc", "2.0"}, {"id", 10}, {"method", "retrieve"}, {"params", {{"query", 42}, {"k", "lots"}}}},
+            Json{{"jsonrpc", "2.0"}, {"id", 11}, {"method", "retrieve"}, {"params", "not-an-object"}},
+            Json{{"jsonrpc", "2.0"}, {"id", 12}, {"method", "retrieve"}, {"params", {{"query", {{"text", nullptr}}}}}},
+            Json{{"jsonrpc", "2.0"}, {"id", 13}, {"method", "embed"}, {"params", {{"texts", 7}}}},
+            Json{{"jsonrpc", "2.0"}, {"id", 14}, {"method", "ping"}, {"params", {{"nonce", {1, 2, 3}}}}},
+        };
+        for (const auto& m : malformed) {
+            Json reply = s.handle(m);
+            CHECK(reply.is_object());
+            CHECK(reply.contains("result") || reply.contains("error"));
+            CHECK(reply["id"] == m["id"]);        // stays correlated — no desync
+        }
+
+        // And through the line interface, where a real server actually lives.
+        CHECK(!s.handle_line("{\"jsonrpc\":\"2.0\",\"id\":20,\"method\":\"retrieve\",\"params\":{\"k\":\"x\"}}").empty());
+        CHECK(!s.handle_line("not json at all").empty());
+    }
+
     if (g_fail == 0) std::printf("all type + runtime checks passed\n");
     return g_fail == 0 ? 0 : 1;
 }
