@@ -461,6 +461,71 @@ int main() {
         CHECK(!s.handle_line("not json at all").empty());
     }
 
+    // ── Sweep: the product of wrong types × fields × methods ───────────────
+    //
+    // The cases above are the ones I happened to think of, which is exactly the
+    // wrong way to test a crash whose trigger is "some field, somewhere, had a
+    // type the code did not expect". This sweeps a product of malformed shapes
+    // instead and asserts the invariant that matters for a long-lived session:
+    // every request gets back a well-formed reply carrying its OWN id, so a
+    // pipelining client never desynchronises.
+    //
+    // The handler here reads its params trustingly, the way ordinary handler
+    // code does — that is the second escape route, and it must be caught too.
+    // With the guard reverted this sweep aborts on SIGABRT rather than failing
+    // a check, which is the point.
+    {
+        struct TrustingHandler {
+            PeerInfo info() const { return {"trusting", "1"}; }
+            Capabilities capabilities() const {
+                return Capabilities{}.with_retrieve(100, {"dense", "hybrid"})
+                                     .with_embed(Dimension{3}, "fuzz-embed");
+            }
+            Result<Json> retrieve(const Json& p) {
+                return Json{{"hits", Json::array({Json{{"id", "1"}, {"score", 1.0},
+                                                       {"text", p.at("query").get<std::string>()}}})}};
+            }
+            Result<Json> embed(const Json& p) {
+                Json v = Json::array();
+                for (const auto& t : p.at("texts")) { (void)t; v.push_back(Json::array({0.0, 0.0, 0.0})); }
+                return Json{{"vectors", v}};
+            }
+        };
+        Server<TrustingHandler> s{TrustingHandler{}};
+
+        const std::vector<Json> weird = {
+            Json(nullptr), true, 0, -1, 3.5, "", "x", Json::array(), Json::array({1, 2}),
+            Json::object(), Json{{"a", 1}}, Json{{"text", nullptr}}, Json{{"text", Json::array()}},
+        };
+        const std::vector<std::string> methods = {
+            "initialize", "retrieve", "embed", "ping", "info",
+            "index/add", "index/delete", "notifications/cancel", "rerank", "nope",
+        };
+        const std::vector<std::string> keys = {
+            "protocolVersion", "query", "k", "texts", "id", "nonce", "documents",
+        };
+
+        long sent = 0, malformed_reply = 0, desync = 0;
+        for (const auto& m : methods)
+            for (const auto& w : weird)
+                for (const auto& key : keys)
+                    for (int form = 0; form < 2; ++form) {   // keyed object, and bare value
+                        ++sent;
+                        Json params = (form == 0) ? Json{{key, w}} : w;
+                        Json msg{{"jsonrpc", "2.0"}, {"id", sent}, {"method", m}, {"params", params}};
+                        const std::string out = s.handle_line(msg.dump());
+                        if (out.empty()) continue;
+                        Json reply = Json::parse(out, nullptr, false);
+                        if (reply.is_discarded() || !reply.is_object() ||
+                            !(reply.contains("result") || reply.contains("error"))) { ++malformed_reply; continue; }
+                        if (reply["id"] != Json(sent)) ++desync;
+                    }
+
+        CHECK(sent > 1000);
+        CHECK(malformed_reply == 0);
+        CHECK(desync == 0);
+    }
+
     if (g_fail == 0) std::printf("all type + runtime checks passed\n");
     return g_fail == 0 ? 0 : 1;
 }
