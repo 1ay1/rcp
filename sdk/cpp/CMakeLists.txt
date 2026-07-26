@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 project(rcp
-  VERSION 1.0.0
+  VERSION 1.0.1
   DESCRIPTION "Retrieval Context Protocol — header-only C++23 SDK"
   HOMEPAGE_URL "https://rcp-6d6ef6d5.mintlify.site/"
   LANGUAGES CXX)

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "rcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Retrieval Context Protocol — header-only C++23 SDK.",
   "homepage": "https://rcp-6d6ef6d5.mintlify.site/",
   "license": "MIT",

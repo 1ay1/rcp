@@ -11,6 +11,42 @@ The authoritative change log is
 rendered version lives at the
 [Changelog page](https://rcp-6d6ef6d5.mintlify.site/reference/changelog).
 
+## [SDK 1.0.1] — C++ SDK patch (no wire change)
+
+SDK-only release. The protocol, schema and conformance suite are unchanged, so
+any RCP/1 peer interoperates exactly as before — but every server built on the
+C++ SDK should take this one.
+
+### Fixed
+
+- **C++ SDK: a malformed request could terminate the server process.**
+  `Server::handle` is documented "Never throws" and did. Dispatch runs SDK field
+  extraction and arbitrary handler code over peer-controlled params, and
+  nlohmann::json raises `type_error` on a bad `.get<T>()`; only `Json::parse`
+  was guarded, so a well-formed message with a wrongly-TYPED field escaped as an
+  exception and reached `std::terminate`. On a stdio server that is the whole
+  process gone on one bad line — an unauthenticated remote kill — and any state
+  the host had not persisted goes with it.
+
+  The trigger is the most likely mistake a new client makes:
+  `{"protocolVersion": "1.0"}`, a string where §7.1 says integer.
+
+  Two fixes, in order of how the error *should* be reported: a non-integer
+  `protocolVersion` is now rejected as `-32602` naming the field, and `handle()`
+  genuinely never throws — anything escaping, from the SDK or from handler code,
+  becomes `-32603` against the request's own id, so a pipelining client stays
+  correlated instead of desynchronising.
+
+  Audited for the same bug class in the other three SDKs: Python, Node and Rust
+  are **not** vulnerable. Python was verified empirically (1440 malformed
+  messages through `Server.handle_line`, zero escapes) rather than by reading.
+
+### Added
+
+- C++ SDK tests sweep the product of {malformed values} x {field names} x
+  {methods} — 1820 messages — asserting every one returns a well-formed reply
+  carrying its own id. Verified to abort (SIGABRT) with the guard reverted.
+
 ## [1.0 · ed.3] — 2026 (adoption & developer-experience revision)
 
 Makes conformance *executable and certifiable*, and turns the reference server
