@@ -17,15 +17,12 @@
 #include <utility>
 #include <cmath>
 
+#include "rcp/platform.hpp"
 #include "rcp/protocol.hpp"
 #include "rcp/types.hpp"
 
-#include <csignal>
 #include <cerrno>
 #include <cstring>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 namespace rcp {
 
@@ -222,52 +219,54 @@ public:
     }
 
     // Loop over partial writes; returns false on error (e.g. EPIPE) so callers
-    // can stop rather than spin.
+    // can stop rather than spin. Operates on a CRT fd (stdout), not a socket.
     static bool write_all(int fd, std::string_view s) {
-        const char* p = s.data(); std::size_t n = s.size();
-        while (n) { ssize_t w = ::write(fd, p, n); if (w < 0) { if (errno == EINTR) continue; return false; } p += w; n -= (std::size_t)w; }
-        return true;
+        return plat::fd_write_all(fd, s);
     }
 
     void serve_stdio() {
-        std::signal(SIGPIPE, SIG_IGN);
+        plat::init_sockets();       // SIGPIPE on POSIX: a dead peer must not kill us
+        plat::set_stdio_binary();   // Windows: keep the CRT from injecting '\r'
         std::string in;
         char tmp[4096];
         for (;;) {
             auto nl = in.find('\n');
             if (nl == std::string::npos) {
-                ssize_t r = ::read(0, tmp, sizeof tmp);
+                const long r = plat::fd_read(0, tmp, sizeof tmp);
                 if (r <= 0) break;
-                in.append(tmp, (size_t)r);
+                in.append(tmp, static_cast<std::size_t>(r));
                 continue;
             }
             std::string line = in.substr(0, nl); in.erase(0, nl + 1);
+            // Tolerate a CRLF-framed client (spec allows the liberal framing).
+            if (!line.empty() && line.back() == '\r') line.pop_back();
             if (line.empty()) continue;
             bool is_shutdown = false;
             try { Json m = Json::parse(line); is_shutdown = m.is_object() && m.value("method", std::string{}) == method::Shutdown; } catch (...) {}
             std::string reply = handle_line(line);
             if (!reply.empty()) {
                 reply.push_back('\n');
-                if (!write_all(1, reply)) break;   // stdout closed: peer gone
+                if (!plat::fd_write_all(1, reply)) break;   // stdout closed: peer gone
             }
             if (is_shutdown) break;
         }
     }
 
     [[nodiscard]] Result<void> serve_http(std::uint16_t port) {
-        std::signal(SIGPIPE, SIG_IGN);
-        int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (fd < 0) return fail<void>(errc::BackendUnavailable, "socket() failed");
-        int yes = 1; ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
-        sockaddr_in a{}; a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_LOOPBACK); a.sin_port = htons(port);
-        if (::bind(fd, (sockaddr*)&a, sizeof a) != 0) { ::close(fd); return fail<void>(errc::BackendUnavailable, "bind failed"); }
-        ::listen(fd, 16);
+        plat::init_sockets();
+        plat::socket_t fd = plat::listen_tcp(port);
+        if (!plat::valid(fd))
+            return fail<void>(errc::BackendUnavailable,
+                              "failed to listen on 127.0.0.1:" + std::to_string(port));
         for (;;) {
-            int c = ::accept(fd, nullptr, nullptr);
-            if (c < 0) continue;
-            std::string req; char tmp[4096]; ssize_t r; std::size_t clen = 0; std::size_t hend = std::string::npos;
-            while ((r = ::read(c, tmp, sizeof tmp)) > 0) {
-                req.append(tmp, (size_t)r);
+            plat::socket_t c = plat::accept_one(fd);
+            if (!plat::valid(c)) continue;
+            std::string req; char tmp[4096]; std::size_t clen = 0; std::size_t hend = std::string::npos;
+            for (;;) {
+                const long r = plat::sock_recv(c, tmp, sizeof tmp);
+                if (r < 0) { if (plat::interrupted()) continue; break; }
+                if (r == 0) break;
+                req.append(tmp, static_cast<std::size_t>(r));
                 if (hend == std::string::npos) {
                     hend = req.find("\r\n\r\n");
                     if (hend != std::string::npos) {
@@ -288,8 +287,8 @@ public:
                 resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
                        std::to_string(reply.size()) + "\r\nConnection: close\r\n\r\n" + reply;
             }
-            (void)write_all(c, resp);
-            ::close(c);
+            (void)plat::send_all(c, resp);
+            plat::close_socket(c);
         }
     }
 

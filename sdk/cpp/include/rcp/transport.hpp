@@ -1,36 +1,32 @@
 #pragma once
 // rcp/transport.hpp — the request/reply seam (subprocess pipe or HTTP).
 //
-// A Transport is a total function Json -> Result<Json>. Concrete transports are
-// POSIX (fork/exec pipe, minimal HTTP/1.1). The client is written once against
-// this interface; a test can inject an in-memory fake.
+// A Transport is a total function Json -> Result<Json>. The client is written
+// once against this interface; a test can inject an in-memory fake.
+//
+// Both concrete transports are fully cross-platform: every OS call goes through
+// rcp/platform.hpp, which uses fork/exec + BSD sockets on POSIX and
+// CreateProcess + Winsock2 on Windows. There are no #ifdefs in this file and no
+// emulation anywhere — each platform runs its own native path at native speed.
 
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "rcp/platform.hpp"
 #include "rcp/types.hpp"
 
-#include <csignal>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 namespace rcp {
 
-// Ignore SIGPIPE process-wide (installed once): writing to a pipe or socket
-// whose peer has exited must fail the write with EPIPE and surface as a typed
-// error — never terminate our process with a signal.
-inline void ignore_sigpipe() {
-    [[maybe_unused]] static const bool once = [] { std::signal(SIGPIPE, SIG_IGN); return true; }();
-}
+// Ensure writing to a dead peer fails the call instead of killing the process
+// (SIGPIPE on POSIX), and that Winsock is started on Windows. One name, because
+// it is one intent; see platform.hpp for why the mechanisms differ.
+inline void ignore_sigpipe() { plat::init_sockets(); }
 
 struct Transport {
     virtual ~Transport() = default;
@@ -44,26 +40,14 @@ class StdioTransport final : public Transport {
 public:
     [[nodiscard]] static Result<std::unique_ptr<StdioTransport>>
     spawn(const std::vector<std::string>& argv) {
-        ignore_sigpipe();
-        if (argv.empty()) return fail<std::unique_ptr<StdioTransport>>(errc::InvalidParams, "empty argv");
-        int in_pipe[2], out_pipe[2];
-        if (::pipe(in_pipe) != 0 || ::pipe(out_pipe) != 0)
-            return fail<std::unique_ptr<StdioTransport>>(errc::BackendUnavailable, "pipe() failed");
-        pid_t pid = ::fork();
-        if (pid < 0) return fail<std::unique_ptr<StdioTransport>>(errc::BackendUnavailable, "fork() failed");
-        if (pid == 0) {
-            ::dup2(in_pipe[0], STDIN_FILENO);
-            ::dup2(out_pipe[1], STDOUT_FILENO);
-            ::close(in_pipe[0]); ::close(in_pipe[1]); ::close(out_pipe[0]); ::close(out_pipe[1]);
-            std::vector<char*> args;
-            for (auto& a : const_cast<std::vector<std::string>&>(argv)) args.push_back(a.data());
-            args.push_back(nullptr);
-            ::execvp(args[0], args.data());
-            ::_exit(127);
-        }
-        ::close(in_pipe[0]); ::close(out_pipe[1]);
+        if (argv.empty())
+            return fail<std::unique_ptr<StdioTransport>>(errc::InvalidParams, "empty argv");
+        plat::Child c = plat::spawn_child(argv);
+        if (!c.valid())
+            return fail<std::unique_ptr<StdioTransport>>(errc::BackendUnavailable,
+                                                         "failed to spawn '" + argv[0] + "'");
         auto t = std::unique_ptr<StdioTransport>(new StdioTransport());
-        t->pid_ = pid; t->to_ = in_pipe[1]; t->from_ = out_pipe[0];
+        t->child_ = c;
         return t;
     }
 
@@ -72,7 +56,8 @@ public:
     [[nodiscard]] Result<Json> call(const Json& request) override {
         std::string line = request.dump();
         line.push_back('\n');
-        if (!write_all(line)) return fail<Json>(errc::BackendUnavailable, "write to server failed");
+        if (!plat::fd_write_all(child_.stdin_fd, line))
+            return fail<Json>(errc::BackendUnavailable, "write to server failed");
         for (;;) {
             auto ln = read_line();
             if (!ln) return std::unexpected(ln.error());
@@ -88,39 +73,36 @@ public:
         }
     }
 
-    void close() override {
-        if (to_ >= 0) { ::close(to_); to_ = -1; }
-        if (from_ >= 0) { ::close(from_); from_ = -1; }
-        if (pid_ > 0) { int st; ::kill(pid_, SIGTERM); ::waitpid(pid_, &st, 0); pid_ = -1; }
-    }
+    void close() override { plat::reap_child(child_); }
 
 private:
     StdioTransport() = default;
-    bool write_all(std::string_view s) {
-        const char* p = s.data(); size_t n = s.size();
-        while (n) { ssize_t w = ::write(to_, p, n); if (w < 0) { if (errno == EINTR) continue; return false; } p += w; n -= (size_t)w; }
-        return true;
-    }
     Result<std::string> read_line() {
         for (;;) {
             if (auto nl = buf_.find('\n'); nl != std::string::npos) {
-                std::string line = buf_.substr(0, nl); buf_.erase(0, nl + 1); return line;
+                std::string line = buf_.substr(0, nl);
+                buf_.erase(0, nl + 1);
+                // Tolerate a CRLF-framed peer: a Windows child that writes in
+                // text mode, or any peer following the more liberal framing.
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                return line;
             }
             char tmp[4096];
-            ssize_t r = ::read(from_, tmp, sizeof tmp);
-            if (r < 0) { if (errno == EINTR) continue; return fail<std::string>(errc::BackendUnavailable, "read failed"); }
+            const long r = plat::fd_read(child_.stdout_fd, tmp, sizeof tmp);
+            if (r < 0) return fail<std::string>(errc::BackendUnavailable, "read failed");
             if (r == 0) return fail<std::string>(errc::BackendUnavailable, "server closed the connection");
-            buf_.append(tmp, (size_t)r);
+            buf_.append(tmp, static_cast<std::size_t>(r));
         }
     }
-    pid_t pid_ = -1; int to_ = -1, from_ = -1; std::string buf_;
+    plat::Child child_;
+    std::string buf_;
 };
 
-// ── HTTP transport: POST <base>/<method>. ───────────────────────────────────
+// ── HTTP transport: POST <base>/<method>. ──────────────────────────────
 class HttpTransport final : public Transport {
 public:
     explicit HttpTransport(std::string base_url) : base_(std::move(base_url)) {
-        ignore_sigpipe();
+        plat::init_sockets();
         if (!base_.empty() && base_.back() == '/') base_.pop_back();
     }
     [[nodiscard]] Result<Json> call(const Json& request) override {
@@ -134,26 +116,28 @@ public:
         int port = 80;
         if (auto c = host.find(':'); c != std::string::npos) { port = std::stoi(host.substr(c + 1)); host = host.substr(0, c); }
 
-        int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (fd < 0) return fail<Json>(errc::BackendUnavailable, "socket() failed");
-        sockaddr_in addr{}; addr.sin_family = AF_INET; addr.sin_port = htons((uint16_t)port);
-        if (hostent* he = ::gethostbyname(host.c_str()); he && he->h_addr_list[0])
-            std::memcpy(&addr.sin_addr, he->h_addr_list[0], (size_t)he->h_length);
-        else addr.sin_addr.s_addr = ::inet_addr(host.c_str());
-        if (::connect(fd, (sockaddr*)&addr, sizeof addr) != 0) { ::close(fd); return fail<Json>(errc::BackendUnavailable, "connect failed"); }
+        // getaddrinfo under the hood: IPv6-capable and thread-safe, unlike the
+        // gethostbyname() this used to call.
+        plat::socket_t fd = plat::connect_tcp(host, static_cast<std::uint16_t>(port));
+        if (!plat::valid(fd)) return fail<Json>(errc::BackendUnavailable, "connect to " + host + " failed");
 
         std::string body = request.dump();
         std::string req = "POST " + path + " HTTP/1.1\r\nHost: " + host +
                           "\r\nContent-Type: application/json\r\nContent-Length: " +
                           std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-        // Robust write: loop over partial writes; EPIPE surfaces as a typed error.
-        { const char* p = req.data(); size_t n = req.size();
-          while (n) { ssize_t w = ::write(fd, p, n);
-              if (w < 0) { if (errno == EINTR) continue; ::close(fd); return fail<Json>(errc::BackendUnavailable, "write failed"); }
-              p += w; n -= (size_t)w; } }
-        std::string resp; char tmp[4096]; ssize_t r;
-        while ((r = ::read(fd, tmp, sizeof tmp)) > 0) resp.append(tmp, (size_t)r);
-        ::close(fd);
+        if (!plat::send_all(fd, req)) {
+            plat::close_socket(fd);
+            return fail<Json>(errc::BackendUnavailable, "write failed");
+        }
+        std::string resp;
+        char tmp[4096];
+        for (;;) {
+            const long r = plat::sock_recv(fd, tmp, sizeof tmp);
+            if (r < 0) { if (plat::interrupted()) continue; break; }
+            if (r == 0) break;
+            resp.append(tmp, static_cast<std::size_t>(r));
+        }
+        plat::close_socket(fd);
         // Parse the HTTP status line; non-2xx is a transport failure (spec §5.2).
         int status = 0;
         if (resp.compare(0, 5, "HTTP/") == 0) {

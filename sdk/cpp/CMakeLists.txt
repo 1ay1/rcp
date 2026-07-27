@@ -21,6 +21,16 @@ target_include_directories(rcp INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
+# The transports use TCP sockets: BSD sockets on POSIX (in libc, nothing to
+# link) and Winsock2 on Windows (which must be linked explicitly). This is
+# INTERFACE because the SDK is header-only — the socket calls are compiled into
+# the CONSUMER's translation units, so the consumer is what needs the library.
+# mingw/gcc also ignores MSVC's `#pragma comment(lib, "ws2_32")`, so naming it
+# here is the only thing that makes a UCRT64 build link.
+if(WIN32)
+  target_link_libraries(rcp INTERFACE ws2_32)
+endif()
+
 # ---------------------------------------------------------------------------
 # Optional: build the bundled examples with -DRCP_BUILD_EXAMPLES=ON.
 # ---------------------------------------------------------------------------
