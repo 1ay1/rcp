@@ -32,6 +32,27 @@ if(WIN32)
 endif()
 
 # ---------------------------------------------------------------------------
+# Optional: build the bundled tests with -DRCP_BUILD_TESTS=ON.
+#
+# These are built through CMake rather than a hand-written compiler line in CI
+# for a specific reason: the tests need exactly what a real consumer needs
+# (cxx_std_23 and, on Windows, ws2_32), and linking them against rcp::rcp is
+# what guarantees they get it. A bespoke `c++ -std=c++23 ...` in a workflow
+# duplicates that knowledge, and the duplicate is what rots — it silently
+# omits Winsock on mingw and hard-codes a -std flag Apple Clang spells
+# differently.
+# ---------------------------------------------------------------------------
+option(RCP_BUILD_TESTS "Build the RCP SDK tests" OFF)
+if(RCP_BUILD_TESTS)
+  enable_testing()
+  foreach(t test_types test_transport_platform)
+    add_executable(${t} tests/${t}.cpp)
+    target_link_libraries(${t} PRIVATE rcp::rcp)
+    add_test(NAME ${t} COMMAND ${t})
+  endforeach()
+endif()
+
+# ---------------------------------------------------------------------------
 # Optional: build the bundled examples with -DRCP_BUILD_EXAMPLES=ON.
 # ---------------------------------------------------------------------------
 option(RCP_BUILD_EXAMPLES "Build the RCP example server/client" OFF)

@@ -62,65 +62,18 @@ jobs:
             git
 
       - name: Configure
-        run: cmake -S sdk/cpp -B build -DCMAKE_BUILD_TYPE=Release -DRCP_BUILD_EXAMPLES=ON
+        run: cmake -S sdk/cpp -B build -DCMAKE_BUILD_TYPE=Release -DRCP_BUILD_EXAMPLES=ON -DRCP_BUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build -j 4
 
-      # The SDK's own test binary is not wired into CTest, so build and run it
-      # directly. It covers the type layer plus runtime round-trips.
+      # Through CTest, so the test binaries inherit the SAME toolchain settings
+      # a real consumer gets from rcp::rcp (C++23 spelled correctly for this
+      # compiler, and ws2_32 on Windows). test_transport_platform.cpp is the one
+      # that matters here: it forces the socket and subprocess code to link AND
+      # run, which is the property that headers-compile-in-isolation cannot show.
       - name: Test
-        run: |
-          set -e
-          cmake -E make_directory build/t
-          c++ -std=c++23 -O2 sdk/cpp/tests/test_types.cpp \
-              -I sdk/cpp/include -o build/t/test_types
-          ./build/t/test_types
-
-      # Portability is only proven if the OS-touching code is actually REACHED.
-      # Every header compiling in isolation would still pass if the socket and
-      # subprocess paths were dead code, so link a binary that names all of
-      # them and run it: HTTP connect to a closed port, a spawned child, and
-      # the server's listen path must each return a typed error rather than
-      # hang, crash, or fail to link.
-      - name: Transports must link and run on this OS
-        run: |
-          set -e
-          cat > build/probe.cpp <<'EOF'
-          #include "rcp/client.hpp"
-          #include "rcp/server.hpp"
-          #include "rcp/transport.hpp"
-          #include <cstdio>
-          #include <cstdlib>
-          struct Probe {
-              rcp::PeerInfo     info()         const { return {"probe", "0"}; }
-              rcp::Capabilities capabilities() const { return {}; }
-          };
-          int main() {
-              rcp::HttpTransport http{"http://127.0.0.1:1/"};
-              auto r = http.call(nlohmann::json{{"method", "ping"}});
-              if (r.has_value()) { std::puts("FAIL: connect to a closed port succeeded"); return 1; }
-              std::puts("ok: http transport returned a typed error");
-
-              auto st = rcp::StdioTransport::spawn({"rcp-no-such-program-9f2c1"});
-              std::puts("ok: stdio spawn of a missing program did not crash");
-              (void)st;
-
-              rcp::Server<Probe> srv{Probe{}};
-              auto reply = srv.handle_line("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"nope\"}");
-              if (reply.empty()) { std::puts("FAIL: server produced no reply"); return 1; }
-              std::puts("ok: server framing works");
-
-              if (std::getenv("RCP_PROBE_SERVE")) (void)srv.serve_http(0);  // link-only
-              return 0;
-          }
-          EOF
-          c++ -std=c++23 -O2 build/probe.cpp -I sdk/cpp/include -o build/probe $LDLIBS_EXTRA
-          ./build/probe
-        env:
-          # mingw/gcc ignores MSVC's #pragma comment(lib), so Winsock must be
-          # named explicitly when compiling outside the CMake target.
-          LDLIBS_EXTRA: ${{ runner.os == 'Windows' && '-lws2_32' || '' }}
+        run: ctest --test-dir build --output-on-failure
 
       # Guard against the exact regression class that caused the outage: a
       # POSIX-only header creeping back into the public API. platform.hpp is
